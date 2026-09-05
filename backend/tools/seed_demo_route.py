@@ -51,7 +51,7 @@ EVIDENCE_DIR = Path(settings.evidence_crop_dir)
 # routes are genuinely distinct.
 JOURNEYS = [
     {
-        "plate": "GJ01AB1234",
+        "plate": "GJ99AB1234",
         "note": "City centre, then an impossible jump to Rajkot",
         "legs": [
             ("cam01", 0),    # Chimanbhai Bridge
@@ -62,7 +62,7 @@ JOURNEYS = [
         ],
     },
     {
-        "plate": "GJ18CD5678",
+        "plate": "GJ98CD5678",
         "note": "Northbound towards Gandhinagar",
         "legs": [
             ("cam04", 8),    # Paldi Circle
@@ -72,7 +72,7 @@ JOURNEYS = [
         ],
     },
     {
-        "plate": "MH12DE1433",
+        "plate": "MH99DE1433",
         "note": "Out-of-state vehicle crossing the city",
         "legs": [
             ("cam15", 3),    # Suvidha Park
@@ -82,7 +82,7 @@ JOURNEYS = [
         ],
     },
     {
-        "plate": "GJ05JV7219",
+        "plate": "GJ97JV7219",
         "note": "Short hop, two sightings only",
         "legs": [
             ("cam16", 12),   # Visat P2
@@ -90,7 +90,7 @@ JOURNEYS = [
         ],
     },
     {
-        "plate": "RJ14GH9012",
+        "plate": "RJ99GH9012",
         "note": "Northern corridor",
         "legs": [
             ("cam12", 5),    # Adalaj Toll Naka
@@ -99,7 +99,7 @@ JOURNEYS = [
         ],
     },
     {
-        "plate": "GJ27XY4455",
+        "plate": "GJ96XY4455",
         "note": "Single sighting — a vehicle seen once",
         "legs": [
             ("cam13", 30),   # C N Vidyalaya
@@ -280,7 +280,7 @@ def main() -> int:
     if missing:
         print(f"Not found in the clip: {', '.join(missing)}")
     print("\nSearch any plate and choose 'Show Route on Map' — each returns its own")
-    print("route. GJ01AB1234 ends with a flagged impossible transition to Rajkot.")
+    print("route. GJ99AB1234 ends with a flagged impossible transition to Rajkot.")
     return 0
 
 

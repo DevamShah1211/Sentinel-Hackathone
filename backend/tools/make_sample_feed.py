@@ -34,14 +34,26 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 OUTPUT_DIR = Path(__file__).resolve().parents[1] / "sample_feeds"
 WIDTH, HEIGHT, FPS = 1280, 720, 25
 
-# Ground truth. Real Gujarat RTO prefixes, invented serials.
+# Ground truth for the synthetic clip.
+#
+# These use RTO district codes that DO NOT EXIST — Gujarat issues GJ-01 to GJ-39,
+# Maharashtra MH-01 to MH-50, Rajasthan RJ-01 to RJ-58 — so every plate here is
+# correctly *formatted* and passes the pipeline's grammar validation, while being
+# impossible to issue to a real vehicle.
+#
+# That matters. An earlier version used plausible registrations like GJ18CD5678,
+# which turns out to belong to a real motorcycle: a reviewer who looks one up
+# finds a real owner beside our synthetic VAHAN record, and the demonstration
+# starts to look like it is making claims about a real person. Unissuable codes
+# remove that risk entirely without weakening the test — the OCR and the grammar
+# checks cannot tell the difference.
 GROUND_TRUTH = [
-    "GJ01AB1234",   # Ahmedabad
-    "GJ18CD5678",   # Gandhinagar
-    "GJ05JV7219",   # Surat
-    "MH12DE1433",   # Pune — an out-of-state vehicle
-    "RJ14GH9012",   # Jaipur
-    "GJ27XY4455",   # Ahmedabad East
+    "GJ99AB1234",   # GJ-99 is not an issued RTO code
+    "GJ98CD5678",
+    "GJ97JV7219",
+    "MH99DE1433",   # nor is MH-99
+    "RJ99GH9012",   # nor RJ-99
+    "GJ96XY4455",
 ]
 
 _FONT_CANDIDATES = (
