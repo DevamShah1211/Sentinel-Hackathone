@@ -24,6 +24,7 @@ import argparse
 import logging
 import sys
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 import cv2
@@ -31,17 +32,42 @@ import requests
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from app.settings import settings  # noqa: E402
 from app.vision import PlateDetector, TrackManager, aggregate_track  # noqa: E402
 
 logger = logging.getLogger("sentinel.demo_seed")
 
 API_BASE = "http://127.0.0.1:8000/api/v1"
 MIN_CONFIDENCE = 0.45
+EVIDENCE_DIR = Path(settings.evidence_crop_dir)
+
+
+def save_evidence_crop(crop, plate: str, camera: str) -> str | None:
+    """Write a track's best plate crop to disk and return the path it is served on."""
+    if crop is None or getattr(crop, "size", 0) == 0:
+        return None
+    EVIDENCE_DIR.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S_%f")
+    filename = f"{camera}_{plate}_{stamp}.jpg"
+    try:
+        # Upscale small crops so the evidence image is legible in the UI and in
+        # the report rather than a handful of pixels.
+        height, width = crop.shape[:2]
+        if width < 240 and width > 0:
+            scale = 240 / width
+            crop = cv2.resize(crop, (int(width * scale), int(height * scale)),
+                              interpolation=cv2.INTER_CUBIC)
+        cv2.imwrite(str(EVIDENCE_DIR / filename), crop)
+        return f"/evidence/{filename}"
+    except cv2.error as exc:
+        logger.debug("Could not write crop: %s", exc)
+        return None
 
 
 def post_detection(api_base: str, camera_native_id: str, plate: str,
                    confidence: float, pts_ms: int, track_id: str,
-                   reads: list, grammar) -> bool:
+                   reads: list, grammar, crop_uri: str | None = None,
+                   detected_at: str | None = None) -> bool:
     try:
         response = requests.post(
             f"{api_base}/detections",
@@ -51,11 +77,13 @@ def post_detection(api_base: str, camera_native_id: str, plate: str,
                 "confidence": confidence,
                 "pts_ms": pts_ms,
                 "track_id": track_id,
+                "crop_uri": crop_uri,
                 "vehicle_type": None,
                 "raw_reads": [{"plate": r.text, "conf": round(r.mean_confidence, 4)}
                               for r in reads[:20]],
                 "plate_format": grammar.fmt,
                 "grammar_corrections": grammar.corrections,
+                **({"detected_at": detected_at} if detected_at else {}),
             },
             timeout=15,
         )
@@ -79,6 +107,10 @@ def main() -> int:
                         help="Report what would be indexed without writing")
     parser.add_argument("--loop", type=int, default=1,
                         help="Process the clip this many times (for a longer demo)")
+    parser.add_argument("--detected-at", default=None,
+                        help="ISO-8601 UTC time to record these sightings at. Use when "
+                             "seeding a route across several cameras so the intervals "
+                             "between them are realistic for the distances involved.")
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO,
@@ -119,10 +151,12 @@ def main() -> int:
                             " [grammar-corrected]" if grammar.corrections else "")
                 indexed += 1
                 if not args.dry_run:
+                    crop_uri = save_evidence_crop(track.best_crop, plate, args.camera)
                     if post_detection(args.api_base, args.camera, plate, confidence,
                                       pts_offset + track.last_pts_ms,
                                       f"{args.camera}-p{pass_number}-{track.track_id}",
-                                      track.reads, grammar):
+                                      track.reads, grammar, crop_uri,
+                                      args.detected_at):
                         alerts += 1
                         logger.warning("*** WATCHLIST ALERT: %s ***", plate)
 

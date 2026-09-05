@@ -1,0 +1,100 @@
+# Sentinel — full stack for a deployable instance.
+#
+#   cp backend/.env.example .env      # fill in sandbox credentials and a secret
+#   docker compose up -d --build
+#
+# Brings up PostgreSQL with PostGIS and pg_trgm, the API, the built frontend
+# behind nginx, and the continuous ANPR indexer. The database is seeded from the
+# sandbox catalogue on first start.
+#
+# For anything public, set AUTH_ENABLED=true and change SECRET_KEY and the demo
+# account passwords first.
+
+services:
+  db:
+    image: postgis/postgis:16-3.4
+    container_name: sentinel-db
+    environment:
+      POSTGRES_DB: sentinel
+      POSTGRES_USER: sentinel
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sentinel}
+    volumes:
+      - sentinel-db:/var/lib/postgresql/data
+      - ./supabase_setup.sql:/docker-entrypoint-initdb.d/10-schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sentinel -d sentinel"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  api:
+    build:
+      context: ./backend
+    container_name: sentinel-api
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+psycopg://sentinel:${POSTGRES_PASSWORD:-sentinel}@db:5432/sentinel
+      SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY in .env}
+      AUTH_ENABLED: ${AUTH_ENABLED:-true}
+      SENTINEL_USER_EMAIL: ${SENTINEL_USER_EMAIL}
+      SENTINEL_USER_PASSWORD: ${SENTINEL_USER_PASSWORD}
+      SENTINEL_HOST: ${SENTINEL_HOST:-cctv.corp8.cloud}
+      SENTINEL_CDN_HOST: ${SENTINEL_CDN_HOST:-cctv.corp8.cloud}
+      SENTINEL_IP: ${SENTINEL_IP:-103.250.160.189}
+      CORS_ORIGINS: '["http://localhost", "http://localhost:8080"]'
+      EVIDENCE_CROP_DIR: /data/evidence
+      DEMO_ADMIN_PASSWORD: ${DEMO_ADMIN_PASSWORD:-sentinel-demo-2026}
+    volumes:
+      - sentinel-evidence:/data/evidence
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=5).status==200 else 1)\""]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 40s
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: ./backend
+    container_name: sentinel-worker
+    depends_on:
+      api:
+        condition: service_healthy
+    command: ["python", "anpr_worker.py", "--max-streams", "6"]
+    environment:
+      API_BASE: http://api:8000/api/v1
+      DATABASE_URL: postgresql+psycopg://sentinel:${POSTGRES_PASSWORD:-sentinel}@db:5432/sentinel
+      SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY in .env}
+      SENTINEL_USER_EMAIL: ${SENTINEL_USER_EMAIL}
+      SENTINEL_USER_PASSWORD: ${SENTINEL_USER_PASSWORD}
+      SENTINEL_IP: ${SENTINEL_IP:-103.250.160.189}
+      EVIDENCE_CROP_DIR: /data/evidence
+    volumes:
+      - sentinel-evidence:/data/evidence
+    # Inference is CPU-bound; without a ceiling the indexer will starve the API.
+    deploy:
+      resources:
+        limits:
+          cpus: "4.0"
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ./frontend
+    container_name: sentinel-web
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "8080:80"
+    restart: unless-stopped
+
+volumes:
+  sentinel-db:
+  sentinel-evidence:

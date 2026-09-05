@@ -99,6 +99,10 @@ class DetectionCreate(BaseModel):
     bbox: Optional[dict] = None
     plate_format: Optional[str] = None
     grammar_corrections: int = 0
+    # Only set when replaying recorded footage, so a route demonstration can space
+    # sightings realistically for the distances between cameras. Live detections
+    # never set this and are stamped by the database.
+    detected_at: Optional[datetime] = None
 
 
 @router.get("", response_model=list[DetectionOut], summary="Search detections by plate / time / camera")
@@ -316,6 +320,8 @@ async def create_detection(body: DetectionCreate, db: AsyncSession = Depends(get
         raw_reads=raw_reads,
         bbox=body.bbox,
     )
+    if body.detected_at is not None:
+        det.detected_at = body.detected_at
     db.add(det)
     await db.flush()
     await db.refresh(det)

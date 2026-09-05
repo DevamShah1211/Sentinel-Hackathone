@@ -143,7 +143,7 @@ export default function DashboardPage() {
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, fontSize: 13 }}>
                     <div>
                         <div style={{ color: 'var(--text-secondary)', fontSize: 11, marginBottom: 4 }}>BACKEND</div>
-                        FastAPI + Python 3.12<br />
+                        FastAPI + Python 3.11+<br />
                         <span style={{ color: 'var(--text-muted)' }}>uvicorn · SQLAlchemy async</span>
                     </div>
                     <div>

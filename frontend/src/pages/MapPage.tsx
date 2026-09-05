@@ -104,6 +104,28 @@ function MapFlyTo({ lat, lon }: { lat: number; lon: number }) {
     return null
 }
 
+/**
+ * Fit the view to every camera once they load.
+ *
+ * Opening on Ahmedabad hid the cameras in Junagadh, Rajkot, Navsari and Kutch,
+ * which is precisely the statewide coverage Model 1 is meant to show. Refitting
+ * only when the camera *set* changes leaves the operator's own panning alone.
+ */
+function FitToCameras({ points }: { points: [number, number][] }) {
+    const map = useMap()
+    const signature = points.length
+    useEffect(() => {
+        if (points.length === 0) return
+        if (points.length === 1) {
+            map.setView(points[0], 13)
+            return
+        }
+        map.fitBounds(points, { padding: [48, 48], maxZoom: 12 })
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [map, signature])
+    return null
+}
+
 export default function MapPage() {
     const [cameras, setCameras] = useState<CameraFeature[]>([])
     const [loading, setLoading] = useState(true)
@@ -142,7 +164,13 @@ export default function MapPage() {
     const depts = [...new Set(cameras.map(c => c.properties.department))].sort()
     const codecs = [...new Set(cameras.map(c => c.properties.codec).filter(Boolean))].sort()
 
-    const defaultCenter: LatLngExpression = [23.0225, 72.5714] // Ahmedabad
+    // Gujarat, used only until the cameras load and the view is fitted to them.
+    const defaultCenter: LatLngExpression = [22.6, 71.6]
+
+    const cameraPoints = filtered
+        .map(c => c.geometry.coordinates)
+        .filter(([lon, lat]) => Number.isFinite(lat) && Number.isFinite(lon))
+        .map(([lon, lat]) => [lat, lon] as [number, number])
 
     return (
         <div className="page-content no-padding" style={{ display: 'flex', flexDirection: 'column' }}>
@@ -196,7 +224,8 @@ export default function MapPage() {
                 )}
                 <MapContainer
                     center={defaultCenter}
-                    zoom={12}
+                    zoom={7}
+                    preferCanvas
                     style={{ height: '100%', width: '100%' }}
                     zoomControl={true}
                 >
@@ -204,6 +233,7 @@ export default function MapPage() {
                         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
                         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                     />
+                    <FitToCameras points={cameraPoints} />
                     {flyTo && <MapFlyTo lat={flyTo.lat} lon={flyTo.lon} />}
                     {filtered.map(cam => {
                         const [lon, lat] = cam.geometry.coordinates
