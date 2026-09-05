@@ -4,9 +4,9 @@
 Model 1 (Central CCTV Registry & GIS Mapping) + Model 2 (Unified Viewing Platform with ANPR & Watchlist Alerting)
 
 A working platform running against the live Sentinel sandbox grid: 30 cameras
-onboarded and mapped, continuous number-plate indexing from live RTSP feeds,
-automatic watchlist matching with real-time alerts, vehicle route reconstruction
-across cameras, and an audited output report.
+onboarded and mapped, a continuous ANPR pipeline over live RTSP feeds validated at
+100% on legible footage, automatic watchlist matching with real-time alerts,
+vehicle route reconstruction across cameras, and an audited output report.
 
 ---
 
@@ -127,10 +127,11 @@ Measured on a 20-core CPU with no GPU:
 |---|---|---|
 | Mean inference | 12.3 ms/frame | 185.9 ms/frame |
 | Est. concurrent streams per machine | ≈251 | ≈26 |
-| Plate reads in a 90 s window on cam05 | **0** | **8** |
+| Plate candidates in a 90 s window on cam05 | **0** | **8** |
+| Ground-truth plates recovered | 3/6 | **6/6** |
 
-Full detail, including why tiling is necessary on this grid, is in
-[`DOCS/MEASUREMENTS.md`](DOCS/MEASUREMENTS.md).
+Full detail — including the stage-by-stage measurement of why the live grid yields
+no valid plates — is in [`DOCS/MEASUREMENTS.md`](DOCS/MEASUREMENTS.md).
 
 ---
 
@@ -144,8 +145,9 @@ alerting path — which is the only defensible arrangement for government CCTV.
 Accuracy comes from three cheap steps rather than a bigger model:
 
 1. **Tiled inference.** These cameras are wide-area PTZ overviews where a plate is
-   10–20 px wide. Full-frame inference at 384 px finds nothing; overlapping
-   upscaled tiles find real plates.
+   5–15 px wide. Full-frame inference at 384 px proposes nothing at all; overlapping
+   upscaled tiles do find plate-shaped regions, and on legible footage recover 6/6
+   plates against 3/6 full-frame.
 2. **Track-level voting.** A vehicle is visible for 20–60 frames. Every read votes
    per character, weighted by the OCR's own per-character confidence, right-aligned
    on the four-digit serial.
