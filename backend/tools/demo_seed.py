@@ -142,7 +142,12 @@ def main() -> int:
                 if voted is None:
                     continue
                 plate, confidence, grammar = voted
-                if confidence < MIN_CONFIDENCE or not grammar.valid:
+                # Same acceptance criteria as the live indexer: confident enough,
+                # a valid Indian format, and a real RTO state code. The last one
+                # is what keeps plate-shaped signage out of the index.
+                if (confidence < MIN_CONFIDENCE
+                        or not grammar.valid
+                        or not grammar.state_valid):
                     rejected += 1
                     continue
 

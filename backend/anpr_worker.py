@@ -176,6 +176,16 @@ def process_camera(camera: dict, detector: PlateDetector, publisher: DetectionPu
                 logger.debug("%s: dropped %s (not a valid Indian plate format)",
                              native_id, plate_text)
                 continue
+            if not grammar.state_valid:
+                # The shape is right but the leading two letters are not a real
+                # RTO code. On this grid that is almost always roadside signage
+                # that happens to look plate-like — an observed example read
+                # 'AI771114' — and admitting it would corrupt the index with
+                # something that looks exactly like a real detection.
+                stats.bump("rejected_invalid_format")
+                logger.debug("%s: dropped %s (unknown state code '%s')",
+                             native_id, plate_text, plate_text[:2])
+                continue
 
             crop_uri = save_evidence_crop(track.best_crop, plate_text, native_id)
             stats.bump("tracks_emitted")

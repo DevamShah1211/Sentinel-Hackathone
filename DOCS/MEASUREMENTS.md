@@ -101,6 +101,14 @@ The false-positive rejection is itself a result. A system that reported
 `AEVETEE` as a vehicle would have produced impressive-looking detections and a
 worthless index.
 
+**One candidate did get through, and closing that gap is instructive.** A long
+indexing run produced `AI771114` from cam14 — correctly shaped for an Indian
+plate, so the format check passed, but `AI` is not a real RTO state code. The
+worker now also requires a valid state code before a detection reaches the index.
+This is the value of validating against the actual RTO prefix list rather than
+the format alone: the format check catches text that is not plate-shaped, and the
+state-code check catches text that is.
+
 ## 3. Plate-grammar correction
 
     python -m pytest tests/test_plate_grammar.py
