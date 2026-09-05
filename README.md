@@ -43,6 +43,18 @@ vehicle route reconstruction across cameras, and an audited output report.
 
 ## Quick start
 
+### Whole stack, one command
+
+```bash
+cp backend/.env.example .env    # sandbox credentials, SECRET_KEY, AUTH_ENABLED=true
+docker compose up -d --build    # console on :8080 · API on :8000
+```
+
+Brings up PostGIS, the API, the console behind nginx, and the continuous ANPR
+indexer. Sign in with the demonstration accounts below.
+
+### Or run the components directly
+
 **Prerequisites:** Python 3.11+ (3.14 works), Node 18+, and PostgreSQL 16+ with
 PostGIS. No GPU is required — all inference runs on CPU.
 
@@ -83,7 +95,24 @@ SECRET_KEY=change-me
 ```
 
 Sandbox credentials are read from the environment, used only server-side, and
-masked in logs. They are never sent to the browser.
+masked in logs. They are never sent to the browser: `GET /cameras` does not
+serialise the credential-bearing RTSP or WHEP URLs at all, and live video reaches
+the operator through an authenticated proxy that holds the sandbox session.
+
+### Signing in
+
+Three accounts are seeded on first start. **Change these before exposing the
+platform to anyone.**
+
+| Role | Email | Password | Grants |
+|---|---|---|---|
+| State admin | `admin@sentinel.gujarat.gov.in` | `sentinel-demo-2026` | Everything, including the audit trail |
+| Dept operator | `operator@sentinel.gujarat.gov.in` | `operator-demo-2026` | Search, watchlist, alerts, reports |
+| Viewer | `viewer@sentinel.gujarat.gov.in` | `viewer-demo-2026` | Map and live viewing only |
+
+`AUTH_ENABLED` defaults to `false` so the pipeline can be demonstrated locally
+without signing in. **Set it to `true` for any deployed instance** — roles are
+then enforced on every protected route.
 
 ---
 
@@ -204,6 +233,24 @@ Full interactive documentation at `http://localhost:8000/api/docs`.
 | `GET /api/v1/analytics/report/xlsx` · `/pdf` | Output report |
 | `GET /api/v1/analytics/vehicle/{plate}` | VAHAN vehicle particulars (mock-backed) |
 | `GET /api/v1/analytics/audit` | Audit trail |
+
+---
+
+## Security posture
+
+| Control | Implementation |
+|---|---|
+| Authentication | JWT bearer tokens; three roles enforced as a route dependency, not documentation |
+| Audit trail | Actor taken from the verified token — never a request parameter — with purpose and case reference on every search, route reconstruction and export |
+| Credentials | Environment only; masked in logs; never serialised to the browser |
+| Transport | CSP, `X-Frame-Options: DENY`, nosniff, referrer and permissions policies, HSTS |
+| CORS | Restricted to configured origins, specific methods and headers |
+| Rate limiting | 10/min on authentication, 300/min elsewhere; video segments exempt |
+| Traceability | `X-Request-ID` on every response and in the log |
+| Data residency | All inference local; no frame or crop leaves the deployment |
+
+Verified: a viewer token receives 403 on the audit trail and on plate search, 200
+on the camera registry; the eleventh login attempt in a minute returns 429.
 
 ---
 

@@ -136,15 +136,38 @@ therefore already protocol-agnostic.
 | Proprietary VMS (Milestone, Genetec, Hikvision) | Vendor SDK/API adapter behind the same connector interface | Design |
 | Legacy analogue via encoder | Encoder presents RTSP; unchanged upstream | Design |
 
-**What we would need from each department** to assess integration feasibility is
-precisely the canonical camera schema in Tech Doc Appendix A. In practice the
-minimum viable set is: camera identifier, site name, coordinates, owning
-department, make/model, codec and resolution, streaming protocol and endpoint,
-authentication method, network path and available bandwidth, retention policy and
-recording location, and a named technical contact. The registry schema in this
-prototype (`cameras` table, Section 5) is a working subset of that list, and the
-gaps we hit on the sandbox — no coordinates, no department, no codec — are exactly
-the fields we would insist on from a real department.
+### 3.1 Department-wise information requirements
+
+This is an explicit evaluation criterion, and our answer is grounded in what the
+sandbox actually withheld. The catalogue gave us an id and a name; every gap
+below is a field whose absence cost us real work, so the list is not theoretical.
+
+| # | Field | Why it is needed | Cost if missing |
+|---|---|---|---|
+| 1 | Camera identifier (departmental) | Reconciling our registry with the department's asset register | Duplicate or orphaned records |
+| 2 | Site name and full address | Human identification in alerts and reports | Operators cannot tell which junction fired |
+| 3 | **Latitude / longitude** | Every map layer, route reconstruction, distance and speed | **We geocoded 30 cameras by hand; at 80,000 this is impossible** |
+| 4 | Owning department and contact | Access control, escalation, fault reporting | No route to a fix when a feed drops |
+| 5 | Make, model, firmware | Connector selection, known-issue handling | Integration by trial and error |
+| 6 | **Codec, resolution, frame rate, bitrate** | Analytics sizing and buffer allocation | **Cannot size the estate; we found mixed H.264/H.265 only by decoding** |
+| 7 | Streaming protocol and endpoint | Ingest at all | No feed |
+| 8 | Authentication method and credential owner | Ingest at all; credential rotation | Broken feeds on every password change |
+| 9 | Network path, bandwidth, NAT/firewall posture | Edge-node placement, backhaul planning | Section 9's topology cannot be planned |
+| 10 | Mounting height, angle, field of view | **Whether ANPR is viable on that camera at all** | Analytics deployed where it cannot work — the exact failure we measured in §6.5 |
+| 11 | Illumination and IR capability | Night-time analytics viability | Overstated coverage |
+| 12 | Retention policy and recording location | Evidence retrieval, DPDP compliance | Cannot answer "where is the footage?" |
+| 13 | Commissioning date and maintenance status | Distinguishing a failed camera from a decommissioned one | Health dashboards that cry wolf |
+
+Rows 3, 6 and 10 are the ones we would insist on before committing to any
+analytics rollout. Row 10 in particular is the lesson of §6.5: without knowing how
+a camera is mounted and framed, a programme can deploy ANPR across a district and
+discover only afterwards that the plates were never resolvable. **A one-page
+survey per camera covering these thirteen fields would de-risk statewide
+integration more than any additional software.**
+
+The `cameras` table (Section 5) implements a working subset of Tech Doc
+Appendix A's canonical schema, and records `geo_source` and `geo_confidence`
+precisely because rows 3 and 10 were unavailable to us.
 
 ---
 
@@ -538,9 +561,35 @@ questioning in a way that a claimed live integration would not.
 
 ## 11. Security, privacy and accountability
 
-**Access control.** JWT authentication with three roles: state admin (full access
-including audit), department operator (own department's cameras, search, watchlist),
-viewer (live view and map only).
+**Access control.** JWT authentication with three roles, **enforced as a
+dependency on each route** rather than described in a document: state admin (full
+access including the audit trail and user creation), department operator (plate
+search, route reconstruction, watchlist, alerts, report export), viewer (camera
+map and live viewing only). Verified: a viewer token receives 403 on the audit
+trail and on plate search, 200 on the camera registry. Tokens are re-checked
+against the database on each request, so a deactivated account loses access
+immediately rather than at token expiry.
+
+`AUTH_ENABLED` defaults to false so the pipeline can be demonstrated locally
+without logging in; startup logs a warning, `GET /api/v1/auth/roles` reports the
+state, and a deployed instance sets it true. Three demonstration accounts are
+seeded on first start so an evaluator has working credentials.
+
+**Transport controls.** Every response carries a content security policy,
+`X-Frame-Options: DENY`, `nosniff`, a referrer policy, a permissions policy and
+HSTS — a surveillance console is a clickjacking target precisely because an
+operator session can query citizen movement history. CORS is restricted to
+configured origins rather than a wildcard.
+
+**Rate limiting.** Fixed-window per client: 10/minute on authentication, 300/minute
+elsewhere, with video segments exempt because limiting them would break the wall
+rather than protect anything. It is in-process and therefore per-worker; a
+multi-instance deployment needs a shared store (Redis), which is a change of
+backing store rather than of design.
+
+**Traceability.** Every request carries an `X-Request-ID`, returned in the
+response and written to the log, so a report of "my search failed" resolves to a
+specific log line.
 
 **Audit trail.** Every plate search, route reconstruction and report export writes
 an `audit_log` row with actor, action, object, **stated purpose**, case reference,
@@ -557,9 +606,12 @@ restriction, minimisation to what policing requires, and a complete access trail
 Retention policy is a departmental decision; the schema supports time-bounded
 deletion of detections independently of the camera registry.
 
-**Transport and credentials.** Sandbox credentials live in environment
-configuration, never in code, and are masked in every log line the platform emits.
-Stream URLs carrying basic-auth are redacted before logging.
+**Credentials.** Sandbox credentials live in environment configuration, never in
+code, and are masked in every log line. `GET /cameras` does not serialise the
+RTSP or WHEP URLs at all, because those carry credentials for the inference
+worker; the browser receives only proxy URLs, and the worker reads the real ones
+from a separate service-to-service route. Live video reaches the operator through
+an authenticated proxy that holds the sandbox session server-side.
 
 **Residency.** All inference is local. No frame, crop or plate read leaves the
 deployment boundary.

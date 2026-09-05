@@ -222,12 +222,18 @@ single most persuasive twenty seconds in the demo.
 
 | Control | Implementation |
 |---|---|
-| Access control | JWT; state admin / department operator / viewer |
-| **Audit trail** | Every search, route reconstruction and export records actor, action, object, **stated purpose**, case reference, IP |
+| Access control | JWT; three roles **enforced per route**, not just documented |
+| **Audit trail** | Actor from the **verified token**, never a request parameter, with stated purpose and case reference |
 | Data minimisation | Plate text, timestamp, camera, plate-region crop — not continuous video |
 | Residency | All inference local; no frame or crop leaves the deployment |
-| Credentials | Environment configuration only; masked in every log line |
+| Credentials | Environment only; masked in logs; **never serialised to the browser** |
+| Transport | CSP · X-Frame-Options DENY · nosniff · HSTS · referrer and permissions policies |
+| Rate limiting | 10/min on auth, 300/min elsewhere; video segments exempt |
 | DPDP Act 2023 | Purpose-bound access, role restriction, minimisation, full access trail |
+
+> **Verified, not asserted:** a viewer token gets **403** on the audit trail and
+> on plate search, **200** on the camera registry. The eleventh login attempt in a
+> minute returns **429**.
 
 **Closed government databases — handled correctly**
 
