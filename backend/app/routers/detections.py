@@ -8,16 +8,54 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+import httpx
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 from sqlalchemy import func, select, text, and_, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app import audit
 from app.database import get_db
 from app.models import Camera, Detection
 
 logger = logging.getLogger("sentinel.detections")
 router = APIRouter()
+
+# Public OSRM demo server. Used only to make a route follow streets instead of
+# cutting across blocks; if it is unreachable the straight-line path still stands,
+# so nothing in the platform depends on this call succeeding.
+OSRM_URL = "https://router.project-osrm.org/route/v1/driving/"
+
+
+async def snap_to_roads(coordinates: list[list[float]]) -> dict | None:
+    """
+    Snap a sequence of [lon, lat] sightings to the road network.
+
+    Returns None rather than raising when the service is unavailable or the path
+    is too short to route — the caller treats the snapped path as a presentation
+    nicety, never as evidence.
+    """
+    if len(coordinates) < 2:
+        return None
+
+    # OSRM's demo server takes a limited number of waypoints per request.
+    waypoints = coordinates[:25]
+    path = ";".join(f"{lon},{lat}" for lon, lat in waypoints)
+    try:
+        async with httpx.AsyncClient(timeout=8.0) as client:
+            response = await client.get(
+                f"{OSRM_URL}{path}",
+                params={"overview": "full", "geometries": "geojson"},
+            )
+        if response.status_code != 200:
+            return None
+        routes = response.json().get("routes") or []
+        if not routes:
+            return None
+        return routes[0].get("geometry")
+    except (httpx.HTTPError, ValueError, KeyError) as exc:
+        logger.debug("OSRM snap unavailable: %s", exc)
+        return None
 
 
 class DetectionOut(BaseModel):
@@ -64,6 +102,7 @@ class DetectionCreate(BaseModel):
 
 @router.get("", response_model=list[DetectionOut], summary="Search detections by plate / time / camera")
 async def search_detections(
+    request: Request,
     db: AsyncSession = Depends(get_db),
     plate: Optional[str] = Query(None, description="Plate text — exact, partial, or fuzzy"),
     camera_id: Optional[UUID] = Query(None),
@@ -72,6 +111,9 @@ async def search_detections(
     fuzzy:   bool = Query(True, description="Use pg_trgm fuzzy match"),
     limit:   int  = Query(100, le=500),
     offset:  int  = Query(0),
+    actor:   str  = Query("operator", description="Who is searching"),
+    purpose: Optional[str] = Query(None, description="Why — recorded in the audit log"),
+    case_ref: Optional[str] = Query(None),
 ):
     """
     Search detections. With fuzzy=true uses pg_trgm similarity (tolerates one bad character).
@@ -133,15 +175,29 @@ async def search_detections(
             camera_address=row.camera_address,
         )
         out.append(d)
+
+    # Searching the index by plate is a query about a specific vehicle, so it is
+    # audited. Unfiltered browsing of recent detections is not.
+    if plate:
+        await audit.record(
+            db, actor=actor, action="search_plate", object_type="plate",
+            object_id=plate.strip().upper(), purpose=purpose, case_ref=case_ref,
+            request=request, details={"fuzzy": fuzzy, "results": len(out)},
+        )
+
     return out
 
 
 @router.get("/route/{plate_text}", summary="Route reconstruction — all sightings of a plate ordered by time")
 async def plate_route(
     plate_text: str,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     from_dt: Optional[datetime] = Query(None),
     to_dt: Optional[datetime] = Query(None),
+    actor: str = Query("operator", description="Who is running this reconstruction"),
+    purpose: str = Query("investigation", description="Why — recorded in the audit log"),
+    case_ref: Optional[str] = Query(None),
 ):
     """
     Returns sorted sightings + computed speed between consecutive cameras.
@@ -200,17 +256,27 @@ async def plate_route(
                 s["impossible"] = speed > 150
         sightings.append(s)
 
+    # Route reconstruction is access to an individual's movement history, so it is
+    # audited with the stated purpose like any other sensitive query.
+    await audit.record(
+        db, actor=actor, action="reconstruct_route", object_type="plate",
+        object_id=p, purpose=purpose, case_ref=case_ref, request=request,
+        details={"sightings": len(sightings),
+                 "flagged_transitions": sum(1 for s in sightings if s["impossible"])},
+    )
+
+    straight_line = [[s["lon"], s["lat"]] for s in sightings if s["lat"] and s["lon"]]
+
     return {
         "plate": p,
         "total_sightings": len(sightings),
         "sightings": sightings,
-        "route_geojson": {
-            "type": "LineString",
-            "coordinates": [
-                [s["lon"], s["lat"]]
-                for s in sightings if s["lat"] and s["lon"]
-            ],
-        },
+        "flagged_transitions": sum(1 for s in sightings if s["impossible"]),
+        # The straight-line path between sightings is what the data actually
+        # supports; the snapped path below is a road-network interpolation and is
+        # returned separately so the two are never confused.
+        "route_geojson": {"type": "LineString", "coordinates": straight_line},
+        "road_snapped_geojson": await snap_to_roads(straight_line),
     }
 
 

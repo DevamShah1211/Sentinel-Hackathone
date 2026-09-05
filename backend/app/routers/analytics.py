@@ -7,13 +7,15 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy import func, select, desc, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app import audit
 from app.database import get_db
-from app.models import Alert, Camera, Detection, WatchlistEntry
+from app.models import Alert, AuditLog, Camera, Detection, WatchlistEntry
+from app.reporting import ReportMeta, ReportRow, build_pdf, build_xlsx
 
 logger = logging.getLogger("sentinel.analytics")
 router = APIRouter()
@@ -82,82 +84,145 @@ async def detections_by_hour(db: AsyncSession = Depends(get_db)):
     return [{"hour": str(r[0]), "count": r[1]} for r in result.all()]
 
 
-@router.get("/report/xlsx", summary="Download output report as XLSX (required artefact)")
-async def download_xlsx(
-    db: AsyncSession = Depends(get_db),
-    from_dt: Optional[datetime] = Query(None),
-    to_dt: Optional[datetime] = Query(None),
-    limit: int = Query(5000, le=50000),
-):
-    """
-    Generates the government-feed output report: plate, confidence, camera,
-    department, location, UTC timestamp, evidence reference.
-    """
-    import openpyxl
-    from openpyxl.styles import Font, PatternFill, Alignment
+# ─── Output report — required submission artefact ─────────────────────────────
 
-    q = (
-        select(Detection, Camera.name, Camera.department, Camera.lat, Camera.lon, Camera.address)
+async def _collect_report_rows(
+    db: AsyncSession,
+    from_dt: Optional[datetime],
+    to_dt: Optional[datetime],
+    plate: Optional[str],
+    camera_id: Optional[str],
+    limit: int,
+) -> tuple[list[ReportRow], ReportMeta]:
+    """Pull detections with their camera context and summarise them."""
+    query = (
+        select(Detection, Camera)
         .join(Camera, Detection.camera_id == Camera.id)
         .order_by(desc(Detection.detected_at))
         .limit(limit)
     )
     if from_dt:
-        q = q.where(Detection.detected_at >= from_dt)
+        query = query.where(Detection.detected_at >= from_dt)
     if to_dt:
-        q = q.where(Detection.detected_at <= to_dt)
-    result = await db.execute(q)
-    rows = result.all()
+        query = query.where(Detection.detected_at <= to_dt)
+    if plate:
+        query = query.where(Detection.plate_text.ilike(f"%{plate.strip().upper()}%"))
+    if camera_id:
+        query = query.where(Camera.native_id == camera_id)
 
-    wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.title = "Sentinel ANPR Report"
+    records = (await db.execute(query)).all()
 
-    # Header row
-    headers = [
-        "Plate Text", "Confidence %", "Camera Name", "Department",
-        "Latitude", "Longitude", "Address", "Detected At (UTC)",
-        "Track ID", "Vehicle Type", "Evidence Crop",
+    rows = [
+        ReportRow(
+            plate_text=detection.plate_text,
+            confidence=detection.confidence or 0.0,
+            camera_native_id=camera.native_id,
+            camera_name=camera.name,
+            department=camera.department,
+            lat=camera.lat,
+            lon=camera.lon,
+            address=camera.address,
+            detected_at=detection.detected_at,
+            pts_ms=detection.pts_ms,
+            track_id=detection.track_id,
+            crop_uri=detection.crop_uri,
+            geo_source=(camera.extra or {}).get("geo_source"),
+        )
+        for detection, camera in records
     ]
-    header_fill = PatternFill("solid", fgColor="1A1A2E")
-    hdr_font = Font(bold=True, color="E0E0E0")
-    for col, h in enumerate(headers, 1):
-        cell = ws.cell(row=1, column=col, value=h)
-        cell.fill = header_fill
-        cell.font = hdr_font
-        cell.alignment = Alignment(horizontal="center")
-    ws.row_dimensions[1].height = 22
-    ws.freeze_panes = "A2"
 
-    fill_alt = PatternFill("solid", fgColor="F5F5F5")
-    for i, row in enumerate(rows, 2):
-        det = row[0]
-        ws.cell(i, 1, det.plate_text)
-        ws.cell(i, 2, round(det.confidence * 100, 1))
-        ws.cell(i, 3, row[1])
-        ws.cell(i, 4, row[2])
-        ws.cell(i, 5, row[3])
-        ws.cell(i, 6, row[4])
-        ws.cell(i, 7, row[5])
-        ws.cell(i, 8, det.detected_at.strftime("%Y-%m-%d %H:%M:%S UTC") if det.detected_at else "")
-        ws.cell(i, 9, det.track_id)
-        ws.cell(i, 10, det.vehicle_type)
-        ws.cell(i, 11, det.crop_uri)
-        if i % 2 == 0:
-            for c in range(1, 12):
-                ws.cell(i, c).fill = fill_alt
-
-    # Column widths
-    for col in ws.columns:
-        max_len = max((len(str(cell.value or "")) for cell in col), default=10)
-        ws.column_dimensions[col[0].column_letter].width = min(max_len + 4, 50)
-
-    buf = io.BytesIO()
-    wb.save(buf)
-    buf.seek(0)
-    filename = f"sentinel_report_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.xlsx"
-    return StreamingResponse(
-        buf,
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    meta = ReportMeta(
+        total_detections=len(rows),
+        unique_plates=len({r.plate_text for r in rows}),
+        cameras_covered=len({r.camera_native_id for r in rows}),
+        watchlist_alerts=await db.scalar(select(func.count(Alert.id))) or 0,
+        window_from=from_dt,
+        window_to=to_dt,
     )
+    return rows, meta
+
+
+@router.get("/report/xlsx", summary="Output report as XLSX (required submission artefact)")
+async def download_xlsx(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    from_dt: Optional[datetime] = Query(None),
+    to_dt: Optional[datetime] = Query(None),
+    plate: Optional[str] = Query(None, description="Restrict to one plate"),
+    camera_id: Optional[str] = Query(None, description="Restrict to one camera (native id)"),
+    limit: int = Query(10000, le=50000),
+    actor: str = Query("operator", description="Who is exporting"),
+    purpose: str = Query("hackathon-demonstration", description="Why — recorded in the audit log"),
+    case_ref: Optional[str] = Query(None),
+):
+    rows, meta = await _collect_report_rows(db, from_dt, to_dt, plate, camera_id, limit)
+    payload = build_xlsx(rows, meta)
+
+    await audit.record(
+        db, actor=actor, action="export_report", object_type="report",
+        object_id="xlsx", purpose=purpose, case_ref=case_ref, request=request,
+        details={"rows": len(rows), "plate": plate, "camera_id": camera_id},
+    )
+
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    return StreamingResponse(
+        io.BytesIO(payload),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="sentinel_anpr_report_{stamp}.xlsx"'},
+    )
+
+
+@router.get("/report/pdf", summary="Output report as PDF (required submission artefact)")
+async def download_pdf(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    from_dt: Optional[datetime] = Query(None),
+    to_dt: Optional[datetime] = Query(None),
+    plate: Optional[str] = Query(None),
+    camera_id: Optional[str] = Query(None),
+    limit: int = Query(10000, le=50000),
+    actor: str = Query("operator"),
+    purpose: str = Query("hackathon-demonstration"),
+    case_ref: Optional[str] = Query(None),
+):
+    rows, meta = await _collect_report_rows(db, from_dt, to_dt, plate, camera_id, limit)
+    payload = build_pdf(rows, meta)
+
+    await audit.record(
+        db, actor=actor, action="export_report", object_type="report",
+        object_id="pdf", purpose=purpose, case_ref=case_ref, request=request,
+        details={"rows": len(rows), "plate": plate, "camera_id": camera_id},
+    )
+
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    return StreamingResponse(
+        io.BytesIO(payload),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="sentinel_anpr_report_{stamp}.pdf"'},
+    )
+
+
+@router.get("/audit", summary="Audit trail — who searched or exported what, and why")
+async def audit_trail(
+    db: AsyncSession = Depends(get_db),
+    limit: int = Query(200, le=1000),
+    action: Optional[str] = Query(None),
+):
+    query = select(AuditLog).order_by(desc(AuditLog.at)).limit(limit)
+    if action:
+        query = query.where(AuditLog.action == action)
+    entries = (await db.execute(query)).scalars().all()
+    return [
+        {
+            "id": str(entry.id),
+            "actor": entry.actor,
+            "action": entry.action,
+            "object_type": entry.object_type,
+            "object_id": entry.object_id,
+            "purpose": entry.purpose,
+            "case_ref": entry.case_ref,
+            "details": entry.details,
+            "at": entry.at,
+        }
+        for entry in entries
+    ]
