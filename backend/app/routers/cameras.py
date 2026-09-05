@@ -9,14 +9,18 @@ import time
 from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+import httpx
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from fastapi import status as http_status
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import func, select, and_, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.live_relay import relay_manager
 from app.models import Camera
+from app.settings import settings
 
 logger = logging.getLogger("sentinel.cameras")
 router = APIRouter()
@@ -32,6 +36,8 @@ class CameraOut(BaseModel):
     lat: Optional[float]
     lon: Optional[float]
     address: Optional[str]
+    live_url: Optional[str] = None
+    snapshot_url: Optional[str] = None
     hls_url: Optional[str]
     codec: Optional[str]
     resolution: Optional[str]
@@ -68,6 +74,11 @@ def serialise_camera(cam: Camera) -> dict:
         "lat": cam.lat,
         "lon": cam.lon,
         "address": cam.address,
+        # Primary viewing path: the local relay, which reads RTSP (reliable) and
+        # serves MJPEG. The sandbox's own HLS is kept as a secondary because it
+        # is higher quality when its web tier is responsive.
+        "live_url": f"/api/v1/cameras/live/{cam.native_id}",
+        "snapshot_url": f"/api/v1/cameras/live/{cam.native_id}/snapshot",
         "hls_url": f"/api/v1/cameras/proxy-hls/{cam.native_id}/index.m3u8",
         "codec": cam.codec,
         "resolution": cam.resolution,
@@ -178,6 +189,64 @@ async def camera_stats(db: AsyncSession = Depends(get_db)):
     return [{"department": r[0], "total": r[1], "live": r[2] or 0} for r in rows]
 
 
+async def _camera_stream_url(native_id: str, db: AsyncSession) -> tuple[str, str]:
+    """Resolve a camera's upstream RTSP URL, or raise 404."""
+    cam = (await db.execute(
+        select(Camera).where(Camera.native_id == native_id)
+    )).scalar_one_or_none()
+    if cam is None:
+        raise HTTPException(http_status.HTTP_404_NOT_FOUND,
+                            f"Unknown camera '{native_id}'")
+    if not cam.rtsp_url:
+        raise HTTPException(http_status.HTTP_409_CONFLICT,
+                            f"Camera '{native_id}' has no RTSP endpoint")
+    return cam.rtsp_url, cam.name
+
+
+@router.get("/live/{native_id}", summary="Live MJPEG stream for a camera")
+async def live_stream(native_id: str, db: AsyncSession = Depends(get_db)):
+    """
+    Stream a camera as MJPEG.
+
+    Every browser plays this in a plain `<img src=...>` with no player library.
+    One upstream RTSP connection is shared by all viewers of a camera, so a
+    nine-tile wall costs the gateway nine connections rather than nine per client.
+    """
+    url, _name = await _camera_stream_url(native_id, db)
+    return StreamingResponse(
+        relay_manager.stream(native_id, url),
+        media_type="multipart/x-mixed-replace; boundary=sentinelframe",
+        headers={
+            "Cache-Control": "no-store, no-cache, must-revalidate",
+            "Pragma": "no-cache",
+            # Nothing downstream should buffer a live stream.
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+@router.get("/live/{native_id}/snapshot", summary="Single current frame from a camera")
+async def live_snapshot(native_id: str, db: AsyncSession = Depends(get_db)):
+    """One JPEG — for map popups and previews, where a full stream is wasteful."""
+    url, _name = await _camera_stream_url(native_id, db)
+    frame = await asyncio.to_thread(relay_manager.snapshot, native_id, url)
+    if frame is None:
+        raise HTTPException(
+            http_status.HTTP_504_GATEWAY_TIMEOUT,
+            "No frame available from this camera yet.",
+        )
+    return Response(content=frame, media_type="image/jpeg",
+                    headers={"Cache-Control": "no-store"})
+
+
+# Declared before /{camera_id}: a literal path must be registered ahead of the
+# UUID catch-all or FastAPI matches the catch-all first.
+@router.get("/live-status", summary="Relay status per camera")
+async def live_status():
+    """What the relay is currently doing — useful when a tile will not play."""
+    return {"relays": relay_manager.status()}
+
+
 @router.get("/{camera_id}", response_model=CameraOut, summary="Get camera by UUID")
 async def get_camera(camera_id: UUID, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Camera).where(Camera.id == camera_id))
@@ -211,9 +280,6 @@ async def update_camera(camera_id: UUID, body: dict, db: AsyncSession = Depends(
 
 
 # ─── Authenticated HLS Stream Proxy ──────────────────────────────────────────
-import httpx
-from fastapi import Response
-from app.settings import settings
 
 _hls_client: Optional[httpx.AsyncClient] = None
 
@@ -438,3 +504,5 @@ async def internal_stream_urls(
         }
         for cam in cameras
     ]
+
+

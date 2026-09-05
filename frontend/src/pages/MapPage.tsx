@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { MapContainer, TileLayer, CircleMarker, Popup, useMap } from 'react-leaflet'
-import Hls from 'hls.js'
 import { RefreshCw, Layers, CheckCircle2, XCircle } from 'lucide-react'
 import { getCamerasGeoJSON, syncCatalogue, getIngestStatus } from '../api/client'
 import type { LatLngExpression } from 'leaflet'
@@ -41,40 +40,15 @@ function deptColor(dept: string): string {
 }
 
 /**
- * Live preview inside a map popup.
+ * Preview inside a map popup.
  *
- * Plays through the platform's authenticated HLS proxy, so no sandbox credential
- * reaches the browser. The player is destroyed when the popup closes — popups
- * open and close constantly while panning, and an undestroyed player per click
- * would accumulate quickly.
+ * A still frame from the relay rather than a live stream: popups open and close
+ * constantly while panning, and holding a video connection per click would keep
+ * upstream connections open for cameras nobody is looking at any more.
  */
 function PopupPreview({ cam }: { cam: CameraFeature['properties'] }) {
-    const videoRef = useRef<HTMLVideoElement | null>(null)
     const [failed, setFailed] = useState(false)
-
-    useEffect(() => {
-        const video = videoRef.current
-        if (!video || !cam.hls_url) return
-
-        let hls: Hls | null = null
-        if (Hls.isSupported()) {
-            hls = new Hls({ lowLatencyMode: true, backBufferLength: 6, maxBufferLength: 8 })
-            hls.loadSource(cam.hls_url)
-            hls.attachMedia(video)
-            hls.on(Hls.Events.MANIFEST_PARSED, () => { video.play().catch(() => {}) })
-            hls.on(Hls.Events.ERROR, (_e, data) => { if (data.fatal) setFailed(true) })
-        } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-            video.src = cam.hls_url
-            video.play().catch(() => {})
-        } else {
-            setFailed(true)
-        }
-
-        return () => {
-            if (hls) hls.destroy()
-            else { video.removeAttribute('src'); video.load() }
-        }
-    }, [cam.hls_url])
+    const [loaded, setLoaded] = useState(false)
 
     if (failed) {
         return (
@@ -82,19 +56,29 @@ function PopupPreview({ cam }: { cam: CameraFeature['properties'] }) {
                 width: '100%', height: '100%', display: 'flex', alignItems: 'center',
                 justifyContent: 'center', color: '#8b95a5', fontSize: 11,
             }}>
-                Stream unavailable
+                Preview unavailable
             </div>
         )
     }
 
     return (
-        <video
-            ref={videoRef}
-            muted
-            playsInline
-            autoPlay
-            style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-        />
+        <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+            <img
+                src={`/api/v1/cameras/live/${encodeURIComponent(cam.native_id)}/snapshot`}
+                alt={`Snapshot from ${cam.name}`}
+                onLoad={() => setLoaded(true)}
+                onError={() => setFailed(true)}
+                style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+            />
+            {!loaded && (
+                <div style={{
+                    position: 'absolute', inset: 0, display: 'flex', alignItems: 'center',
+                    justifyContent: 'center', background: '#000', color: '#8b95a5', fontSize: 11,
+                }}>
+                    Loading…
+                </div>
+            )}
+        </div>
     )
 }
 

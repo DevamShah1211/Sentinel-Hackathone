@@ -1,108 +1,16 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import Hls from 'hls.js'
-import { LayoutGrid, Maximize2, Minimize2, RotateCw, VideoOff } from 'lucide-react'
+import { useCallback, useEffect, useState } from 'react'
+import { LayoutGrid, Maximize2, Minimize2, RotateCw } from 'lucide-react'
 import { getCameras } from '../api/client'
+import LiveTile, { type TileState } from '../components/LiveTile'
 
 interface Camera {
     id: string; native_id: string; name: string; department: string
-    hls_url: string; is_live: boolean; codec: string
+    live_url?: string; hls_url?: string; is_live: boolean; codec: string
 }
 
 interface Slot {
     camera: Camera | null
     isHero: boolean
-}
-
-type TileState = 'connecting' | 'playing' | 'error'
-
-/**
- * One live tile.
- *
- * Streams are played natively with hls.js rather than by embedding the sandbox's
- * own player page, so no credential ever reaches the browser: the URL points at
- * this platform's authenticated proxy, which holds the sandbox session itself.
- *
- * The player is torn down on unmount and whenever the camera changes. Nine
- * simultaneous video elements leak steadily without an explicit destroy(), and
- * the wall is expected to run for the length of a demo.
- */
-function StreamPlayer({ cam, reloadKey, onState }: {
-    cam: Camera; reloadKey: number; onState: (s: TileState) => void
-}) {
-    const videoRef = useRef<HTMLVideoElement | null>(null)
-
-    useEffect(() => {
-        const video = videoRef.current
-        if (!video) return
-
-        const source = cam.hls_url
-        if (!source) {
-            onState('error')
-            return
-        }
-
-        onState('connecting')
-        let hls: Hls | null = null
-
-        if (Hls.isSupported()) {
-            hls = new Hls({
-                lowLatencyMode: true,
-                // Keep buffers small: nine tiles at 1080p will otherwise consume
-                // a great deal of memory over a long session.
-                backBufferLength: 10,
-                maxBufferLength: 12,
-                manifestLoadingMaxRetry: 3,
-                manifestLoadingRetryDelay: 1500,
-            })
-            hls.loadSource(source)
-            hls.attachMedia(video)
-            hls.on(Hls.Events.MANIFEST_PARSED, () => {
-                video.play().catch(() => { /* autoplay policy — the tile still shows */ })
-            })
-            hls.on(Hls.Events.ERROR, (_event, data) => {
-                if (!data.fatal) return
-                // Recover from transient network and media errors in place; only a
-                // genuinely unrecoverable stream marks the tile as failed.
-                if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
-                    hls?.startLoad()
-                } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
-                    hls?.recoverMediaError()
-                } else {
-                    onState('error')
-                }
-            })
-        } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-            // Safari plays HLS natively.
-            video.src = source
-            video.play().catch(() => { /* autoplay policy */ })
-        } else {
-            onState('error')
-            return
-        }
-
-        const handlePlaying = () => onState('playing')
-        video.addEventListener('playing', handlePlaying)
-
-        return () => {
-            video.removeEventListener('playing', handlePlaying)
-            if (hls) {
-                hls.destroy()
-            } else {
-                video.removeAttribute('src')
-                video.load()
-            }
-        }
-    }, [cam.hls_url, cam.native_id, reloadKey, onState])
-
-    return (
-        <video
-            ref={videoRef}
-            muted
-            playsInline
-            autoPlay
-            style={{ width: '100%', height: '100%', objectFit: 'cover', background: '#000', display: 'block' }}
-        />
-    )
 }
 
 function CameraPicker({ cameras, onPick }: { cameras: Camera[]; onPick: (c: Camera) => void }) {
@@ -180,41 +88,12 @@ function VideoTile({ slot, index, onMaximise, onCameraChange, cameras, isMaximis
 
     return (
         <div className="video-tile" style={{ position: 'relative' }}>
-            <StreamPlayer cam={cam} reloadKey={reloadKey} onState={handleState} />
-
-            {state !== 'playing' && (
-                <div style={{
-                    position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column',
-                    alignItems: 'center', justifyContent: 'center', gap: 7,
-                    background: 'rgba(0,0,0,0.6)', color: 'var(--text-secondary)',
-                    fontSize: 12, textAlign: 'center', padding: 12,
-                }}>
-                    {state === 'error' ? (
-                        <>
-                            <VideoOff size={20} aria-hidden="true" />
-                            <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
-                                Stream unavailable
-                            </span>
-                            <span style={{ fontSize: 10.5, color: 'var(--text-muted)', maxWidth: 200 }}>
-                                The upstream gateway is not serving this camera. The registry
-                                and detection index are unaffected.
-                            </span>
-                            <button
-                                className="btn btn-ghost btn-sm"
-                                style={{ marginTop: 2 }}
-                                onClick={() => setReloadKey(k => k + 1)}
-                            >
-                                <RotateCw size={11} aria-hidden="true" /> Retry
-                            </button>
-                        </>
-                    ) : (
-                        <>
-                            <div className="spinner" aria-hidden="true" />
-                            <span>Connecting…</span>
-                        </>
-                    )}
-                </div>
-            )}
+            <LiveTile
+                key={reloadKey}
+                cameraId={cam.native_id}
+                alt={`Live view from ${cam.name}`}
+                onStateChange={handleState}
+            />
 
             <div className="tile-overlay">
                 <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
@@ -265,7 +144,7 @@ function VideoTile({ slot, index, onMaximise, onCameraChange, cameras, isMaximis
 export default function VideoWallPage() {
     const [cameras, setCameras] = useState<Camera[]>([])
     const [slots, setSlots] = useState<Slot[]>(Array.from({ length: 9 }, () => ({ camera: null, isHero: false })))
-    const [layout, setLayout] = useState<'3x3' | '2x2' | '1x1'>('3x3')
+    const [layout, setLayout] = useState<'3x3' | '2x2' | '1x1'>('2x2')
     const [maximised, setMaximised] = useState<number | null>(null)
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
