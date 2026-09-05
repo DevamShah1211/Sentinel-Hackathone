@@ -33,8 +33,8 @@ cannot be trusted on the parts that *are* real.
   provenance recorded per camera
 - GIS map with department, status and location-confidence layers
 - Multi-camera live viewing (HLS grid, WebRTC hero tile)
-- Continuous ANPR on a subset of cameras, with track-level voting and Indian
-  plate-grammar correction
+- Continuous ANPR pipeline on a subset of cameras — tiled inference, track-level
+  voting and Indian plate-grammar correction (yield on this grid: see §6.5)
 - Detection index searchable by exact, partial and trigram-fuzzy plate
 - Watchlist with bulk import; automatic exact-then-fuzzy matching
 - Real-time alerts pushed over WebSocket
@@ -300,11 +300,13 @@ frame. Measured on `cam05`:
 |---|---|---|
 | Mean inference | 12.3 ms | 185.9 ms |
 | Est. streams per machine (20 cores) | ≈251 | ≈26 |
-| Plate reads in a 90 s window | **0** | **8** |
+| Plate candidates in a 90 s window | **0** | **8** |
+| Ground-truth plates recovered (§6.5) | 3/6 | **6/6** |
 
-Tiling costs 15× the CPU and is the difference between a working ANPR system and
-one that finds nothing. This single table is the basis of the tiered-analytics
-argument in Section 9.
+Tiling costs 15× the CPU. On this grid it is the difference between proposing
+candidate regions and proposing none; on footage where plates are legible it is
+the difference between recovering 3 of 6 plates and recovering all 6. This single
+table is the basis of the tiered-analytics argument in Section 9.
 
 ### 6.5 Measured accuracy, stated honestly
 
@@ -316,15 +318,42 @@ A per-frame audit showed **every OCR read of a detected plate was
 character-perfect**. The binding constraint is plate *detection*, not
 *recognition*.
 
-**On the live sandbox feeds the yield is much lower.** Over a five-minute run
-across three cameras the pipeline indexed one plate. The cause is the footage, not
-the pipeline: the grid is largely night-time wide-area overviews with headlight
-glare, where plates are a handful of pixels. We report this plainly because an
-overclaim that collapses under one question costs more than a modest number stated
-clearly. The mitigations are those in Section 6.3 plus fuzzy search (Section 7),
-and the honest statement is that **ANPR yield on this grid is limited by camera
-framing and lighting, and would improve markedly on cameras sited for ANPR** —
-which is itself a finding worth reporting to the department.
+**On the live sandbox feeds the pipeline reads no valid plates, and we say so.**
+Measured across six cameras for 75 s each, counted at every stage:
+
+| Stage | Count |
+|---|---|
+| Frames captured | 1,175 |
+| Passed the quality gate | 198 |
+| Plate-shaped regions proposed by the detector | 165 |
+| OCR strings returned | 87 |
+| Passed the plausibility filter | 34 |
+| **Valid Indian registration plates** | **0** |
+
+A continuous eight-camera run over ~25 minutes produced the same result.
+
+The stage breakdown is what makes this interpretable. The detector is working —
+it proposed 165 plate-shaped regions. The OCR is working — it returned 87
+strings. But those strings are roadside text, not vehicles: cam05's repeated
+`AEVETEE` is the "ADVERTISE HERE" billboard in frame, cam24's `C8MCY811` is
+signage. The Indian-plate grammar validator rejected every one, which is the
+system behaving correctly.
+
+The cause is camera siting. These are wide-area PTZ overviews, largely at night;
+a vehicle occupies 30–80 px of a 1920×1080 frame, putting its plate at 5–15 px —
+below the resolution at which ten characters can be recovered, tiling and
+upscaling included. Upscaling cannot restore detail the sensor never captured.
+
+So the honest claim is narrow and defensible: a pipeline validated end to end at
+**100% on footage where plates are legible** (§6.5 above), which **correctly
+rejects every false candidate** where they are not, and whose limitation here is
+the camera estate rather than the software. **ANPR requires cameras sited for
+it** — mounted low, angled along the carriageway, framed on the plate region —
+and that is a finding worth reporting to the department in its own right.
+
+The rejection behaviour is itself a result. A system that had reported `AEVETEE`
+as a vehicle would have produced impressive-looking detections and a worthless
+index.
 
 ### 6.6 Model selection note
 
@@ -542,9 +571,12 @@ deployment boundary.
 Stated deliberately, because an honest limitations section is worth more than an
 overclaim caught in questioning.
 
-1. **ANPR yield on the sandbox grid is low.** These are wide-area night-time PTZ
-   overviews; plates are frequently a handful of pixels. Section 6.5 gives the
-   measured figures. This is a property of camera siting, not of the pipeline.
+1. **The pipeline reads no valid plates from the sandbox grid.** These are
+   wide-area night-time PTZ overviews where a plate is 5-15 px wide. §6.5 gives
+   the stage-by-stage measurement showing the detector and OCR both working while
+   every candidate is roadside signage, correctly rejected. This is a property of
+   camera siting, not of the pipeline, which validates at 100% on legible
+   footage.
 2. **Camera coordinates are geocoded, not surveyed.** The catalogue publishes only
    id and name. Every camera records `geo_source` and `geo_confidence`; positions
    are accurate to the named site, not to the pole.
@@ -599,7 +631,8 @@ is required, which is itself a deployability argument for district-level nodes.
 |---|---|
 | Measured throughput, both modes | `DOCS/MEASUREMENTS.md` §1; `python anpr_worker.py --benchmark` |
 | 6/6 plate accuracy, 0 false positives | `DOCS/MEASUREMENTS.md` §2; `python tools/make_sample_feed.py --validate` |
-| Grammar correction, noise rejection | `python -m pytest tests/ -q` (45 tests) |
+| Live-grid yield, stage by stage | `DOCS/MEASUREMENTS.md` §2a |
+| Grammar correction, noise rejection, VAHAN contract | `python -m pytest tests/ -q` (57 tests) |
 | OCR model selection | `DOCS/MEASUREMENTS.md` §4 |
 | Sandbox capture behaviour | `DOCS/MEASUREMENTS.md` §5 |
 | Location provenance per camera | `GET /api/v1/ingest/status` |

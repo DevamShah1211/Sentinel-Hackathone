@@ -60,6 +60,47 @@ Removing the two-read requirement admits one false positive (`JO14B1234`, a sing
 read at 0.68 confidence). Requiring two reads eliminates it while costing no real
 detection: genuine passes produce 20+ reads.
 
+## 2a. Yield on the live sandbox grid — the honest number
+
+Six cameras, 75 s each, tiled inference, counted at every stage of the pipeline:
+
+| Camera | Frames | Passed quality gate | Plate boxes | OCR strings | Plausible | **Valid Indian plate** |
+|---|---|---|---|---|---|---|
+| cam01 | 393 | 72 | 26 | 3 | 0 | 0 |
+| cam05 | 325 | 59 | 85 | 51 | 3 | 0 |
+| cam14 | 70 | 8 | 16 | 2 | 0 | 0 |
+| cam17 | 92 | 12 | 3 | 0 | 0 | 0 |
+| cam24 | 220 | 38 | 32 | 31 | 31 | 0 |
+| cam27 | 75 | 9 | 3 | 0 | 0 | 0 |
+| **Total** | **1,175** | **198** | **165** | **87** | **34** | **0** |
+
+A continuous 8-camera indexing run over ~25 minutes likewise produced no valid
+plates.
+
+**What this shows, stage by stage.** The detector is not broken — it proposed 165
+plate-shaped regions. The OCR is not broken — it returned 87 strings. What those
+strings *are* is the point: cam05's repeated `AEVETEE` is the "ADVERTISE HERE"
+billboard in frame, and cam24's `C8MCY811` is signage. Not one is a vehicle
+registration, and the Indian-plate grammar validator correctly rejected every one.
+
+**Why.** These are wide-area PTZ overview cameras, largely at night. A vehicle
+occupies 30–80 px of a 1920×1080 frame, so its plate is 5–15 px wide — below the
+resolution at which any OCR can recover ten characters, tiling and upscaling
+included. Upscaling cannot restore detail the sensor never captured.
+
+**What we conclude, and what we do not.** We do not claim working ANPR on this
+grid. We claim a pipeline that is validated end to end at 100% on footage where
+plates are legible (§2), that correctly rejects every false candidate on footage
+where they are not, and that is limited here by camera siting rather than by the
+software. The correct operational recommendation, and one worth reporting to the
+department, is that ANPR requires cameras sited for it — mounted low, angled
+along the carriageway, with plate-region coverage — rather than wide-area
+situational-awareness PTZs.
+
+The false-positive rejection is itself a result. A system that reported
+`AEVETEE` as a vehicle would have produced impressive-looking detections and a
+worthless index.
+
 ## 3. Plate-grammar correction
 
     python -m pytest tests/test_plate_grammar.py

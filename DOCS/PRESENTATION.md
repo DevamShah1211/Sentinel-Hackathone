@@ -20,9 +20,9 @@ measured and reproducible — see `DOCS/MEASUREMENTS.md`.
 Gujarat CCTV Integration Hackathon 2026 · Category 1
 Team: _______________ · Members: _______________
 
-> A working platform running against the live Sentinel sandbox grid —
-> 30 cameras onboarded, continuous plate indexing, real-time watchlist alerts,
-> and route reconstruction across the camera grid.
+> A working platform running against the live Sentinel sandbox grid — 30 cameras
+> onboarded and mapped, a continuous ANPR pipeline validated at 100% on legible
+> footage, automatic watchlist alerting, and route reconstruction across cameras.
 
 **Speaker note:** Open on the result, not the introduction. One sentence: "Hand us
 a registration number and we will show you where that vehicle has been, across the
@@ -141,10 +141,11 @@ deterministically correctable, with the state code validated against the RTO lis
 > letter O is unambiguously a zero. **7/7** on the correction test cases.
 
 **3 · Overlay rejection** — the detector offers up burnt-in timestamps, `CSITMS-31`,
-`PTZ` labels, and once an "ADVERTISE HERE" billboard read as `AEER75EEEE`. Filtered
-before the index.
+`PTZ` labels, and the "ADVERTISE HERE" billboard on cam05. Filtered before the index.
 
 **Measured on ground truth:** **6/6 plates, 0 false positives.**
+**Measured on the live grid:** 165 plate-shaped regions, 87 OCR strings, **0 valid
+plates** — every candidate was signage, and every one was rejected. See Slide 10.
 
 **Speaker note:** If asked "did you train a model?" — answer with the sentence in
 bold at the top. It is a strength, not an admission.
@@ -153,16 +154,18 @@ bold at the top. It is a strength, not an admission.
 
 ## Slide 6 — The engineering decision that matters
 
-**These cameras are wide-area night PTZ overviews. A plate is 10–20 px wide.**
+**These cameras are wide-area night PTZ overviews. A plate is 5–15 px wide.**
 
-Full-frame inference at 384 px finds **nothing** on this grid. Tiled inference on
-overlapping upscaled regions finds real plates — at 15× the CPU cost.
+Full-frame inference at 384 px proposes **nothing** on this grid. Tiled inference
+on overlapping upscaled regions does find plate-shaped regions — at 15× the CPU
+cost. On legible footage that difference is 3/6 versus **6/6** plates recovered.
 
 | Measured on cam05, 20-core CPU, no GPU | Full frame | **Tiled 2×3 @2×** |
 |---|---|---|
 | Mean inference | 12.3 ms/frame | **185.9 ms/frame** |
 | Est. concurrent streams per machine | ≈251 | **≈26** |
-| Plate reads in a 90 s window | **0** | **8** |
+| Plate candidates in a 90 s window | **0** | **8** |
+| Ground-truth plates recovered | 3/6 | **6/6** |
 
 **Why this table is the scalability answer**
 
@@ -175,8 +178,10 @@ carry analytics** — and that choice is now backed by measurement, not assertio
 | 2 — event-triggered | 20–30% | Urban junctions |
 | 3 — registry & view | 60–75% | Coverage without analytics cost |
 
-**Speaker note:** Most teams will quote a throughput number. Quoting *both* modes,
-and the zero, is what shows the work.
+**Speaker note:** Most teams quote one throughput number. Quoting *both* modes, and
+the zero, is what shows the work. If asked why the live grid yields nothing, go
+straight to Slide 10 — we measured it stage by stage and the answer is camera
+siting, not the software.
 
 ---
 
@@ -280,19 +285,22 @@ is worth more than an unsupported claim of 80,000." Say it.
 ✓ 30 cameras onboarded with location provenance
 ✓ GIS map with department, status and confidence layers
 ✓ Live video wall — HLS grid plus WebRTC hero tile
-✓ Continuous ANPR with track voting and plate grammar
+✓ Continuous ANPR pipeline with tiled inference, track voting and plate grammar
 ✓ Exact, partial and fuzzy plate search
 ✓ Automatic watchlist matching and real-time alerts
 ✓ Route reconstruction with impossible-transition flagging
 ✓ Output report — XLSX and PDF
 ✓ Audit trail with purpose binding
-✓ 45 automated tests · 6/6 ground-truth plate accuracy
+✓ 57 automated tests · 6/6 ground-truth plate accuracy, 0 false positives
 
 **Honest limitations**
 
-- **ANPR yield on this grid is low** — night-time wide-area PTZ framing; plates are
-  a handful of pixels. A property of camera siting, not of the pipeline, and a
-  finding worth reporting to the department.
+- **The pipeline reads no valid plates from this grid.** Measured over 6 cameras:
+  165 plate-shaped regions proposed, 87 OCR strings returned, **0 valid Indian
+  plates** — every candidate was roadside signage (cam05's `AEVETEE` is the
+  "ADVERTISE HERE" billboard), correctly rejected by the grammar validator. At
+  5-15 px per plate no OCR can recover ten characters. **ANPR needs cameras sited
+  for ANPR**, and that is a finding worth reporting to the department.
 - Camera coordinates are **geocoded, not surveyed**; accurate to the site, not the pole.
 - Department attribution is **inferred** from site type and labelled as such.
 - The route is a **sequence of point sightings**; the road-snapped line is an

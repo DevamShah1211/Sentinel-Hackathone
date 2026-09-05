@@ -209,10 +209,14 @@ Full interactive documentation at `http://localhost:8000/api/docs`.
 
 Stated deliberately — see [`DOCS/HLD.md`](DOCS/HLD.md) §12 for the full list.
 
-- **ANPR yield on the sandbox grid is low.** These are wide-area night-time PTZ
-  overviews where plates are frequently a handful of pixels. This is a property of
-  camera siting, not of the pipeline, and would improve markedly on cameras sited
-  for ANPR.
+- **The pipeline reads no valid plates from the sandbox grid.** Measured over six
+  cameras: 165 plate-shaped regions proposed, 87 OCR strings returned, **0 valid
+  Indian plates** — every candidate was roadside signage (cam05's `AEVETEE` is the
+  "ADVERTISE HERE" billboard), correctly rejected by the grammar validator. These
+  are wide-area night-time PTZ overviews where a plate is 5–15 px wide. The same
+  pipeline recovers **6/6** plates on footage where they are legible, so the limit
+  is camera siting rather than the software. Stage-by-stage figures in
+  [`DOCS/MEASUREMENTS.md`](DOCS/MEASUREMENTS.md) §2a.
 - **Camera coordinates are geocoded, not surveyed** — accurate to the named site,
   not to the pole. Every camera records `geo_source` and `geo_confidence`.
 - **Department attribution is inferred** from the site type in the camera name and
