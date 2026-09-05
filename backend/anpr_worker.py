@@ -36,7 +36,7 @@ from pathlib import Path
 import cv2
 import requests
 
-from app.plate_grammar import correct_plate
+from app.plate_grammar import correct_plate, plausible_in_gujarat
 from app.settings import settings
 from app.vision import PlateDetector, StreamCapture, TrackManager, aggregate_track
 
@@ -174,6 +174,14 @@ def process_camera(camera: dict, detector: PlateDetector, publisher: DetectionPu
                 # numbers in the report include what the pipeline could not parse.
                 stats.bump("rejected_invalid_format")
                 logger.debug("%s: dropped %s (not a valid Indian plate format)",
+                             native_id, plate_text)
+                continue
+            if not plausible_in_gujarat(plate_text):
+                # Right shape, real RTO code, but from a state whose vehicles do
+                # not realistically appear here — on this grid that has meant
+                # roadside text, not a vehicle. Search is unaffected.
+                stats.bump("rejected_invalid_format")
+                logger.debug("%s: dropped %s (implausible state for this region)",
                              native_id, plate_text)
                 continue
             if not grammar.state_valid:

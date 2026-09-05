@@ -69,6 +69,8 @@ class DetectionOut(BaseModel):
     track_id: Optional[str]
     crop_uri: Optional[str]
     vehicle_type: Optional[str]
+    tags: list[str] = []
+    notes: Optional[str] = None
     # Joined camera fields
     camera_name: Optional[str] = None
     camera_department: Optional[str] = None
@@ -114,6 +116,7 @@ async def search_detections(
     from_dt: Optional[datetime] = Query(None),
     to_dt:   Optional[datetime] = Query(None),
     fuzzy:   bool = Query(True, description="Use pg_trgm fuzzy match"),
+    tag:     Optional[str] = Query(None, description="Only detections carrying this event tag"),
     limit:   int  = Query(100, le=500),
     offset:  int  = Query(0),
     purpose: Optional[str] = Query(None, description="Why — recorded in the audit log"),
@@ -149,6 +152,9 @@ async def search_detections(
             q = q.where(Detection.plate_text.ilike(f"%{p}%"))
     if camera_id:
         q = q.where(Detection.camera_id == camera_id)
+    if tag:
+        # jsonb containment: the tags array must include this label.
+        q = q.where(Detection.tags.contains([tag.strip().lower().replace(" ", "-")]))
     if from_dt:
         q = q.where(Detection.detected_at >= from_dt)
     if to_dt:
@@ -173,6 +179,8 @@ async def search_detections(
             track_id=det.track_id,
             crop_uri=det.crop_uri,
             vehicle_type=det.vehicle_type,
+            tags=list(det.tags or []),
+            notes=det.notes,
             camera_name=row.camera_name,
             camera_department=row.camera_department,
             camera_lat=row.camera_lat,
@@ -374,3 +382,115 @@ async def recent_detections(db: AsyncSession = Depends(get_db)):
         }
         for r in rows
     ]
+
+
+# ─── Event tagging — Model 2 "event tagging and camera-wise indexing" ─────────
+
+# Suggested labels offered to the operator UI. Deliberately suggestions rather
+# than a closed set: a control room should be able to label what its own
+# operations need without a schema change.
+SUGGESTED_TAGS = [
+    "suspect-vehicle", "wrong-way", "convoy", "repeat-sighting",
+    "follow-up-required", "verified", "false-positive", "evidence-retained",
+]
+
+
+class TagRequest(BaseModel):
+    tags: list[str]
+    note: Optional[str] = None
+
+
+@router.get("/tags", summary="Tags in use, with counts")
+async def list_tags(db: AsyncSession = Depends(get_db)):
+    """
+    Every tag currently applied, with how many detections carry it.
+
+    Drives the filter list in the operator UI, so it reflects what the control
+    room actually uses rather than what was imagined up front.
+    """
+    rows = (await db.execute(
+        select(Detection.tags).where(
+            func.jsonb_array_length(Detection.tags) > 0)
+    )).scalars().all()
+
+    counts: dict[str, int] = {}
+    for tag_list in rows:
+        for tag in (tag_list or []):
+            counts[tag] = counts.get(tag, 0) + 1
+
+    return {
+        "suggested": SUGGESTED_TAGS,
+        "in_use": [{"tag": tag, "count": count}
+                   for tag, count in sorted(counts.items(), key=lambda kv: -kv[1])],
+    }
+
+
+@router.post("/{detection_id}/tags", summary="Tag a detection")
+async def tag_detection(
+    detection_id: UUID,
+    body: TagRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    principal: Principal = RequireOperator,
+):
+    """
+    Apply event tags to a detection.
+
+    Tags are merged rather than replaced, so two operators working the same
+    incident do not overwrite each other. Tagging is audited: it is an
+    operator's assertion about a vehicle, and the trail should say who made it.
+    """
+    detection = (await db.execute(
+        select(Detection).where(Detection.id == detection_id)
+    )).scalar_one_or_none()
+    if detection is None:
+        raise HTTPException(404, "Detection not found")
+
+    incoming = [t.strip().lower().replace(" ", "-") for t in body.tags if t.strip()]
+    if not incoming and body.note is None:
+        raise HTTPException(422, "Provide at least one tag or a note")
+
+    merged = list(dict.fromkeys(list(detection.tags or []) + incoming))
+    detection.tags = merged
+    if body.note is not None:
+        detection.notes = body.note
+
+    await audit.record(
+        db, actor=principal.email, action="tag_detection",
+        object_type="detection", object_id=str(detection_id),
+        purpose="event-tagging", request=request,
+        details={"tags_added": incoming, "plate": detection.plate_text},
+        commit=False,
+    )
+    await db.commit()
+
+    return {"id": str(detection.id), "plate_text": detection.plate_text,
+            "tags": merged, "notes": detection.notes}
+
+
+@router.delete("/{detection_id}/tags/{tag}", summary="Remove one tag")
+async def untag_detection(
+    detection_id: UUID,
+    tag: str,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    principal: Principal = RequireOperator,
+):
+    detection = (await db.execute(
+        select(Detection).where(Detection.id == detection_id)
+    )).scalar_one_or_none()
+    if detection is None:
+        raise HTTPException(404, "Detection not found")
+
+    normalised = tag.strip().lower().replace(" ", "-")
+    remaining = [t for t in (detection.tags or []) if t != normalised]
+    detection.tags = remaining
+
+    await audit.record(
+        db, actor=principal.email, action="untag_detection",
+        object_type="detection", object_id=str(detection_id),
+        purpose="event-tagging", request=request,
+        details={"tag_removed": normalised}, commit=False,
+    )
+    await db.commit()
+    return {"id": str(detection.id), "tags": remaining}

@@ -136,6 +136,45 @@ therefore already protocol-agnostic.
 | Proprietary VMS (Milestone, Genetec, Hikvision) | Vendor SDK/API adapter behind the same connector interface | Design |
 | Legacy analogue via encoder | Encoder presents RTSP; unchanged upstream | Design |
 
+### 3.0 Existing departmental systems remain unaffected
+
+A named Model 2 deliverable, and the concern any department will raise first:
+*what does this platform do to the system we already run?*
+
+**Nothing. Sentinel is a consumer, never a controller.**
+
+| | |
+|---|---|
+| Streams | Opened read-only, as any additional viewer would. No PTZ command, no preset recall, no configuration write. |
+| Recording | Untouched. The department's NVR keeps recording exactly as before; we store plate metadata and a small evidence crop, not a parallel video archive. |
+| Camera settings | Never modified. Resolution, bitrate, framing and schedules stay under departmental control. |
+| Gateway control APIs | Not called. The sandbox exposes a control interface; we consume only the published catalogue and the stream endpoints. |
+| Credentials | A read-only account per department. Nothing in the platform requires an administrative credential on a departmental system. |
+| Failure mode | If Sentinel stops, the department's estate is unchanged — it simply loses one viewer. |
+
+**How that is enforced, not merely intended:**
+
+- The camera registry is populated from `GET /api/ingest`; no write path to any
+  upstream system exists in the codebase.
+- The capture layer (`app/vision.py`) opens an RTSP session and reads frames.
+  There is no ONVIF PTZ client, no vendor SDK write call, and no configuration
+  endpoint anywhere in the platform.
+- The live relay holds **one** upstream connection per camera shared across all
+  viewers (`app/live_relay.py`), specifically so the platform's load on a
+  departmental gateway does not scale with how many operators are watching.
+- Idle relays disconnect after 25 seconds, returning the connection.
+
+**The load we add is bounded and stated.** One RTSP session per camera under
+analytics, plus one per camera being viewed, shared across viewers. At the
+statewide topology of §9.2 that load lands on a district edge node on the local
+network, not on the department's own recorder.
+
+**Where this would need departmental agreement**, and we say so rather than
+assuming: a read-only account on each system, firewall permission from the edge
+node to the camera or NVR, and confirmation that the estate has spare stream
+slots — some older NVRs cap concurrent sessions, which is a question for the
+survey in §3.1 rather than something to discover in production.
+
 ### 3.1 Department-wise information requirements
 
 This is an explicit evaluation criterion, and our answer is grounded in what the

@@ -12,6 +12,7 @@ import pytest
 
 from app.plate_grammar import (
     PlateRead,
+    plausible_in_gujarat,
     correct_plate,
     is_overlay_noise,
     normalise,
@@ -132,3 +133,32 @@ class TestVoting:
             PlateRead("GJ01AB1234", []),
         ])
         assert text == "GJ01AB1234"
+
+
+class TestRegionalPlausibility:
+    """
+    A final filter for live indexing only. An observed read, LA1O0444, came from
+    roadside text: correctly shaped, and LA is a real RTO code, so both earlier
+    checks passed. Vehicles from distant union territories do not realistically
+    appear on this grid, and admitting one silently corrupts the index.
+    """
+
+    @pytest.mark.parametrize("plate", ["GJ01AB1234", "MH12DE1433", "RJ14GH9012",
+                                       "DL8CAA1234", "22BH1234AA"])
+    def test_plates_seen_on_gujarat_roads_are_accepted(self, plate: str) -> None:
+        assert plausible_in_gujarat(plate)
+
+    @pytest.mark.parametrize("plate", ["LA1O0444", "LD01AB1234", "MZ05XY9999",
+                                       "NL01AA1111"])
+    def test_distant_territories_are_rejected_for_indexing(self, plate: str) -> None:
+        assert not plausible_in_gujarat(plate)
+
+    def test_empty_input_is_rejected(self) -> None:
+        assert not plausible_in_gujarat("")
+
+    def test_this_filter_does_not_touch_correctness(self) -> None:
+        # A Ladakh plate is still a valid plate — it is only kept out of
+        # automatic indexing, so search and manual entry still work.
+        result = correct_plate("LA01AB1234")
+        assert result.valid
+        assert result.state_valid

@@ -93,6 +93,13 @@ class Detection(Base):
     raw_reads    = Column(JSONB, default=[])                 # all per-frame reads on this track
     bbox         = Column(JSONB, nullable=True)              # {"x1","y1","x2","y2"}
 
+    # Operator-applied event tags — Model 2's "event tagging and camera-wise
+    # indexing". Free-form so a control room can label what its own operations
+    # need (convoy, wrong-way, suspect-vehicle, follow-up) rather than being held
+    # to a fixed vocabulary decided here. Indexed for search.
+    tags         = Column(JSONB, default=list, nullable=False, server_default="[]")
+    notes        = Column(Text, nullable=True)
+
     camera       = relationship("Camera", back_populates="detections")
     alert        = relationship("Alert", back_populates="detection", uselist=False)
 

@@ -169,6 +169,30 @@ def correct_plate(text: str) -> PlateResult:
     return PlateResult(raw, raw, False, raw[:2] in VALID_STATE_CODES, 0, "unknown")
 
 
+# Indian RTO codes that exist but are vanishingly unlikely on a Gujarat street.
+# A read beginning with one of these is far more often signage that happens to
+# start with two letters than a vehicle from a distant state or union territory.
+# An observed example, LA1O0444 from roadside text, passed every other check.
+# The cost is a genuine Ladakh or Mizoram vehicle, which does not appear on this
+# grid; the benefit is not silently corrupting the index.
+IMPLAUSIBLE_LOCAL_STATES: frozenset[str] = frozenset({
+    "LA", "LD", "AN", "SK", "MN", "MZ", "NL", "TR", "AR",
+})
+
+
+def plausible_in_gujarat(text: str) -> bool:
+    """
+    Whether a corrected plate is plausible on a Gujarat road.
+
+    Applied on top of format and state-code validation for *live indexing only*,
+    where a false positive silently corrupts the index. Search and manual entry
+    are unaffected: an investigator looking for a Ladakh registration should
+    still find one if it was recorded.
+    """
+    t = normalise(text)
+    return len(t) >= 2 and t[:2] not in IMPLAUSIBLE_LOCAL_STATES
+
+
 def plausible_plate(text: str) -> bool:
     """Cheap pre-filter before a read is admitted to a track."""
     t = normalise(text)
