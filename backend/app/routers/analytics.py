@@ -14,6 +14,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import audit
 from app.database import get_db
+from app.security import (
+    CurrentPrincipal, Principal, RequireOperator, RequireStateAdmin,
+)
 from app.models import Alert, AuditLog, Camera, Detection, WatchlistEntry
 from app.reporting import ReportMeta, ReportRow, build_pdf, build_xlsx
 
@@ -151,15 +154,15 @@ async def download_xlsx(
     plate: Optional[str] = Query(None, description="Restrict to one plate"),
     camera_id: Optional[str] = Query(None, description="Restrict to one camera (native id)"),
     limit: int = Query(10000, le=50000),
-    actor: str = Query("operator", description="Who is exporting"),
     purpose: str = Query("hackathon-demonstration", description="Why — recorded in the audit log"),
     case_ref: Optional[str] = Query(None),
+    principal: Principal = RequireOperator,
 ):
     rows, meta = await _collect_report_rows(db, from_dt, to_dt, plate, camera_id, limit)
     payload = build_xlsx(rows, meta)
 
     await audit.record(
-        db, actor=actor, action="export_report", object_type="report",
+        db, actor=principal.email, action="export_report", object_type="report",
         object_id="xlsx", purpose=purpose, case_ref=case_ref, request=request,
         details={"rows": len(rows), "plate": plate, "camera_id": camera_id},
     )
@@ -181,15 +184,15 @@ async def download_pdf(
     plate: Optional[str] = Query(None),
     camera_id: Optional[str] = Query(None),
     limit: int = Query(10000, le=50000),
-    actor: str = Query("operator"),
     purpose: str = Query("hackathon-demonstration"),
     case_ref: Optional[str] = Query(None),
+    principal: Principal = RequireOperator,
 ):
     rows, meta = await _collect_report_rows(db, from_dt, to_dt, plate, camera_id, limit)
     payload = build_pdf(rows, meta)
 
     await audit.record(
-        db, actor=actor, action="export_report", object_type="report",
+        db, actor=principal.email, action="export_report", object_type="report",
         object_id="pdf", purpose=purpose, case_ref=case_ref, request=request,
         details={"rows": len(rows), "plate": plate, "camera_id": camera_id},
     )
@@ -207,6 +210,7 @@ async def audit_trail(
     db: AsyncSession = Depends(get_db),
     limit: int = Query(200, le=1000),
     action: Optional[str] = Query(None),
+    _: Principal = RequireStateAdmin,
 ):
     query = select(AuditLog).order_by(desc(AuditLog.at)).limit(limit)
     if action:
@@ -236,9 +240,9 @@ async def vehicle_lookup(
     plate_text: str,
     request: Request,
     db: AsyncSession = Depends(get_db),
-    actor: str = Query("operator"),
     purpose: str = Query("investigation", description="Why — recorded in the audit log"),
     case_ref: Optional[str] = Query(None),
+    principal: Principal = RequireOperator,
 ):
     """
     Enrich a plate with owner and vehicle details.
@@ -260,7 +264,7 @@ async def vehicle_lookup(
 
     # Looking up an owner is access to personal data and is always audited.
     await audit.record(
-        db, actor=actor, action="vehicle_lookup", object_type="plate",
+        db, actor=principal.email, action="vehicle_lookup", object_type="plate",
         object_id=record.registration_number, purpose=purpose, case_ref=case_ref,
         request=request, details={"source": record.source},
     )

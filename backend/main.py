@@ -31,6 +31,12 @@ logger = logging.getLogger("sentinel")
 async def lifespan(app: FastAPI):
     logger.info("🚀 Starting Sentinel CCTV Platform…")
     await init_db()
+    await auth.seed_demo_users()
+    if not settings.auth_enabled:
+        logger.warning(
+            "AUTH_ENABLED is false — API routes are open. Set AUTH_ENABLED=true "
+            "before exposing this instance."
+        )
     asyncio.create_task(ingest.sync_catalogue_on_startup())
     yield
     logger.info("🛑 Shutting down Sentinel CCTV Platform…")

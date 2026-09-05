@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import audit
 from app.database import get_db
+from app.security import Principal, RequireOperator
 from app.models import Camera, Detection
 
 logger = logging.getLogger("sentinel.detections")
@@ -111,9 +112,9 @@ async def search_detections(
     fuzzy:   bool = Query(True, description="Use pg_trgm fuzzy match"),
     limit:   int  = Query(100, le=500),
     offset:  int  = Query(0),
-    actor:   str  = Query("operator", description="Who is searching"),
     purpose: Optional[str] = Query(None, description="Why — recorded in the audit log"),
     case_ref: Optional[str] = Query(None),
+    principal: Principal = RequireOperator,
 ):
     """
     Search detections. With fuzzy=true uses pg_trgm similarity (tolerates one bad character).
@@ -180,7 +181,7 @@ async def search_detections(
     # audited. Unfiltered browsing of recent detections is not.
     if plate:
         await audit.record(
-            db, actor=actor, action="search_plate", object_type="plate",
+            db, actor=principal.email, action="search_plate", object_type="plate",
             object_id=plate.strip().upper(), purpose=purpose, case_ref=case_ref,
             request=request, details={"fuzzy": fuzzy, "results": len(out)},
         )
@@ -195,9 +196,9 @@ async def plate_route(
     db: AsyncSession = Depends(get_db),
     from_dt: Optional[datetime] = Query(None),
     to_dt: Optional[datetime] = Query(None),
-    actor: str = Query("operator", description="Who is running this reconstruction"),
     purpose: str = Query("investigation", description="Why — recorded in the audit log"),
     case_ref: Optional[str] = Query(None),
+    principal: Principal = RequireOperator,
 ):
     """
     Returns sorted sightings + computed speed between consecutive cameras.
@@ -259,7 +260,7 @@ async def plate_route(
     # Route reconstruction is access to an individual's movement history, so it is
     # audited with the stated purpose like any other sensitive query.
     await audit.record(
-        db, actor=actor, action="reconstruct_route", object_type="plate",
+        db, actor=principal.email, action="reconstruct_route", object_type="plate",
         object_id=p, purpose=purpose, case_ref=case_ref, request=request,
         details={"sightings": len(sightings),
                  "flagged_transitions": sum(1 for s in sightings if s["impossible"])},

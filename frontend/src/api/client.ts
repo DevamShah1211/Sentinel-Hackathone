@@ -1,8 +1,59 @@
 import axios from 'axios'
 
 const BASE = import.meta.env.VITE_API_BASE || '/api/v1'
+const TOKEN_KEY = 'sentinel.token'
+const USER_KEY = 'sentinel.user'
 
 const api = axios.create({ baseURL: BASE })
+
+// ─── Session ────────────────────────────────────────────────────
+
+export interface AuthUser {
+    id: string; email: string; username: string
+    role: string; department?: string | null
+}
+
+export const getToken = () => localStorage.getItem(TOKEN_KEY)
+
+export const getStoredUser = (): AuthUser | null => {
+    const raw = localStorage.getItem(USER_KEY)
+    if (!raw) return null
+    try { return JSON.parse(raw) as AuthUser } catch { return null }
+}
+
+export const setSession = (token: string, user: AuthUser) => {
+    localStorage.setItem(TOKEN_KEY, token)
+    localStorage.setItem(USER_KEY, JSON.stringify(user))
+}
+
+export const clearSession = () => {
+    localStorage.removeItem(TOKEN_KEY)
+    localStorage.removeItem(USER_KEY)
+}
+
+api.interceptors.request.use(config => {
+    const token = getToken()
+    if (token) config.headers.Authorization = `Bearer ${token}`
+    return config
+})
+
+// A 401 means the token is gone or expired: drop the session so the app returns
+// to the login screen rather than looping on failed requests.
+api.interceptors.response.use(
+    response => response,
+    error => {
+        if (error?.response?.status === 401 && getToken()) {
+            clearSession()
+            window.dispatchEvent(new CustomEvent('sentinel:signed-out'))
+        }
+        return Promise.reject(error)
+    },
+)
+
+export const login = (email: string, password: string) =>
+    api.post('/auth/login', { email, password }).then(r => r.data)
+
+export const getRoleModel = () => api.get('/auth/roles').then(r => r.data)
 
 // ─── Cameras ────────────────────────────────────────────────────
 export const getCamerasGeoJSON = () => api.get('/cameras/geojson').then(r => r.data)

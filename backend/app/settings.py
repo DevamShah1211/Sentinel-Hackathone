@@ -14,6 +14,15 @@ class Settings(BaseSettings):
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 480
 
+    # Role enforcement. False lets the prototype be driven without logging in,
+    # which is how the pipeline is demonstrated locally; a deployed instance sets
+    # this true and every protected route then requires a bearer token.
+    auth_enabled: bool = False
+    # Seeded on first start so a deployed instance has working test credentials.
+    # Override both before exposing the platform to anyone.
+    demo_admin_email: str = "admin@sentinel.gujarat.gov.in"
+    demo_admin_password: str = "sentinel-demo-2026"
+
     # Sentinel sandbox
     sentinel_host: str = "cctv.corp8.cloud"
     sentinel_cdn_host: str = "cctv.corp8.cloud"
