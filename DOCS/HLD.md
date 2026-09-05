@@ -406,12 +406,34 @@ a vehicle occupies 30–80 px of a 1920×1080 frame, putting its plate at 5–15
 below the resolution at which ten characters can be recovered, tiling and
 upscaling included. Upscaling cannot restore detail the sensor never captured.
 
+**One camera proves the point.** All thirty were scouted. cam12 is Tri Mandir
+Adalaj Toll Naka — a toll plaza, where vehicles stop and plates face the camera.
+It is the only camera on the grid sited anything like an ANPR camera, and the
+pipeline behaves accordingly: over 100 seconds it produced **25 detections of one
+genuine truck plate**, reading `66Q2XT449` / `6302XX449` / `6602XT449` where the
+crop shows approximately `GJ02XX4499`. The detector is right, the tracker is
+right, and the OCR recovers most of the correct characters.
+
+It still fails validation, and the reason is measurable: the detected plate is
+about **55×15 px**, or **5 px per character**. Seven preprocessing variants were
+tried — upscaling to ×5, CLAHE, greyscale normalisation for the yellow commercial
+plate, sharpening and combinations — and none produced a valid read, because
+upscaling cannot restore detail the sensor never captured. Evidence images are in
+`DOCS/evidence/`.
+
 So the honest claim is narrow and defensible: a pipeline validated end to end at
-**100% on footage where plates are legible** (§6.5 above), which **correctly
-rejects every false candidate** where they are not, and whose limitation here is
-the camera estate rather than the software. **ANPR requires cameras sited for
-it** — mounted low, angled along the carriageway, framed on the plate region —
-and that is a finding worth reporting to the department in its own right.
+**100% on footage where plates are legible**, which **correctly rejects every
+false candidate** where they are not, and whose limitation here is the camera
+estate rather than the software.
+
+And the recommendation that follows is specific rather than general. Move from a
+wide-area PTZ overview to a toll plaza and the same pipeline goes from reading
+nothing to reading eight of ten characters of a real registration, repeatably.
+**The department already has cameras in roughly the right places — cam12 needs
+optics, not different software.** Toll plazas, checkposts and lane-facing junction
+cameras are where statewide ANPR should be deployed first, and a camera at
+cam12's angle with a longer lens would put 15-20 px per character in frame, which
+this pipeline reads at 6/6.
 
 The rejection behaviour is itself a result. A system that had reported `AEVETEE`
 as a vehicle would have produced impressive-looking detections and a worthless

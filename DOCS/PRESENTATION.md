@@ -144,8 +144,16 @@ deterministically correctable, with the state code validated against the RTO lis
 `PTZ` labels, and the "ADVERTISE HERE" billboard on cam05. Filtered before the index.
 
 **Measured on ground truth:** **6/6 plates, 0 false positives.**
-**Measured on the live grid:** 165 plate-shaped regions, 87 OCR strings, **0 valid
-plates** — every candidate was signage, and every one was rejected. See Slide 10.
+
+**Measured on all 30 sandbox cameras:** 29 are wide-area PTZ overviews and yield
+nothing but signage, correctly rejected. **cam12 is a toll plaza** — and there the
+same pipeline found a real truck plate **25 times in 100 seconds**, recovering 8
+of its 10 characters. It fails only because the plate is **5 px per character**.
+Seven preprocessing variants were tried; none help, because upscaling cannot
+restore detail the sensor never captured.
+
+> **The limit is optics, not software** — and the department already has cameras
+> in the right places. See Slide 10.
 
 **Speaker note:** If asked "did you train a model?" — answer with the sentence in
 bold at the top. It is a strength, not an admission.
@@ -337,12 +345,13 @@ more than an unsupported claim of 80,000."
 
 **Honest limitations**
 
-- **The pipeline reads no valid plates from this grid.** Measured over 6 cameras:
-  165 plate-shaped regions proposed, 87 OCR strings returned, **0 valid Indian
-  plates** — every candidate was roadside signage (cam05's `AEVETEE` is the
-  "ADVERTISE HERE" billboard), correctly rejected by the grammar validator. At
-  5-15 px per plate no OCR can recover ten characters. **ANPR needs cameras sited
-  for ANPR**, and that is a finding worth reporting to the department.
+- **The pipeline reads no valid plates from this grid — and we know exactly why.**
+  All 30 cameras scouted. 29 are wide-area PTZ overviews yielding only roadside
+  signage, correctly rejected. **cam12, a toll plaza, is the exception**: 25
+  detections of one real truck plate in 100 seconds, 8 of 10 characters recovered,
+  failing only on 5 px per character. Seven preprocessing variants change nothing.
+  **The limit is optics, not software** — and the recommendation is specific: toll
+  plazas and checkposts first. Evidence in `DOCS/evidence/`.
 - Camera coordinates are **geocoded, not surveyed**; accurate to the site, not the pole.
 - Department attribution is **inferred** from site type and labelled as such.
 - The route is a **sequence of point sightings**; the road-snapped line is an

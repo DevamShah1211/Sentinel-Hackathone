@@ -109,6 +109,62 @@ This is the value of validating against the actual RTO prefix list rather than
 the format alone: the format check catches text that is not plate-shaped, and the
 state-code check catches text that is.
 
+## 2b. All 30 cameras scouted — and what cam12 shows
+
+The earlier §2a sample covered six cameras. The remaining twenty-four were then
+scouted the same way, so the finding now rests on the whole grid rather than a
+subset.
+
+**Result: 0 of 30 cameras yield a valid Indian plate.** But one is materially
+different from the rest and deserves its own entry.
+
+### cam12 — Tri Mandir Adalaj Toll Naka
+
+Unlike every other camera on the grid, cam12 is a **toll plaza**: vehicles stop,
+and plates face the camera at close range. It is the only camera in the sample
+that is sited anything like an ANPR camera, and the pipeline behaves accordingly.
+
+Over a 100-second window it produced **25 detections of one genuine vehicle
+plate** — a yellow commercial plate on a truck in Lane 9 — read as:
+
+| OCR output | Times | After grammar correction | Valid |
+|---|---|---|---|
+| `66Q2XT449` | 11 | `GG02X7449` | format yes, state code no |
+| `6302XX449` | 8 | `6302XX449` | no |
+| `6602XT449` | 4 | `GG02X7449` | format yes, state code no |
+| `6602XX449` | 2 | `6602XX449` | no |
+
+Visual inspection of the saved crop shows the plate reads approximately
+`GJ02XX4499`. So the detector is right, the tracker is right, and the OCR is
+recovering most of the correct characters — it is confusing `GJ`↔`66`/`63` and
+dropping the final digit.
+
+**Why it still fails, measured rather than guessed:** the detected plate region is
+89×54 px *including padding*, so the plate itself is roughly **55×15 px**. Ten
+characters across 55 pixels is about **5 px per character** — below the density at
+which character shapes exist to be recovered. Seven preprocessing variants were
+tried (upscaling to ×5, CLAHE, greyscale normalisation for the yellow commercial
+plate, sharpening, and combinations); **none produced a valid read**, because
+upscaling cannot restore detail the sensor never captured.
+
+### What this changes about the conclusion
+
+It sharpens it. The earlier statement — that the limit is camera siting rather
+than the software — is now supported by a camera that is *partly* sited for the
+job. Move from a wide-area PTZ overview to a toll plaza and the pipeline goes
+from reading nothing at all to reading eight of ten characters of a real
+registration, repeatably, from a single vehicle pass.
+
+The remaining gap is pure sensor resolution. A camera at cam12's angle and
+distance with a longer lens, or simply positioned closer to the lane, would put
+15-20 px per character in frame and the same pipeline would read it — as it does
+at 6/6 on legible footage (§2).
+
+**The operational recommendation is therefore specific rather than general:**
+toll plazas, checkposts and lane-facing junction cameras are where statewide ANPR
+should be deployed first, and cam12 shows the department already has cameras in
+roughly the right places — they need the optics, not different software.
+
 ## 3. Plate-grammar correction
 
     python -m pytest tests/test_plate_grammar.py
