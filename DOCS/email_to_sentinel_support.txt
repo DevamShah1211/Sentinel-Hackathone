@@ -1,0 +1,55 @@
+Subject: Observation on RTSP gateway concurrency - Sentinel sandbox
+
+
+Dear Sentinel Hackathon Support Team,
+
+Thank you for restoring the camera feeds and updating our access list - the
+credentials for devam6205@gmail.com are working correctly, and authentication is
+enforced as expected (an unauthenticated RTSP request returns 401).
+
+While testing our platform against the sandbox we noticed something on the
+gateway that may be worth your attention, as it likely affects other teams too.
+
+OBSERVATION: CONCURRENT RTSP CONNECTIONS ARE ACCEPTED SERIALLY
+
+Opening N simultaneous connections to 103.250.160.189:8554 from a single machine:
+
+    Concurrent connections    Succeeded    Total time
+    ----------------------    ---------    ----------
+             2                  2 / 2         12 s
+             4                  4 / 4         26 s
+             6                  6 / 6         41 s
+             8                  7 / 8         88 s
+
+At eight connections, the per-connection accept times were 3.8, 7.8, 26.7, 33.3,
+56.4, 60.0, 63.0 and 73.3 seconds - a queue rather than a load curve.
+
+Throughout these tests our own machine remained at 4% CPU across 20 cores, with
+no saturation of memory, decoder or network, which suggests the delay is on the
+gateway side rather than the client's.
+
+We also observed that HLS playlist requests
+(https://cctv.corp8.cloud/<cam>/index.m3u8) currently take 6-17 seconds to
+return. This is much improved from before your fix, but still slow enough that
+browser HLS players time out during startup, so we now consume RTSP and
+transcode locally for our operator view.
+
+TWO QUESTIONS, IF YOU ARE ABLE TO ADVISE
+
+1. Is there a recommended or supported limit on concurrent RTSP connections per
+   registered team? We have set our platform's default to six, which we find
+   reliable, but we would rather follow your guidance than our own measurement.
+
+2. Is the serial-accept behaviour expected for the sandbox, or would you like any
+   further detail from our side to help investigate?
+
+We are not blocked - our platform is designed around this and degrades
+gracefully - so please treat this purely as information that might be useful for
+other participants.
+
+Happy to share our full test methodology or raw timings if that would help.
+
+Best regards,
+[Your name]
+Team [Your team name]
+Registered email: devam6205@gmail.com
