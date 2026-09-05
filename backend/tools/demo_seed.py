@@ -107,6 +107,12 @@ def main() -> int:
                         help="Report what would be indexed without writing")
     parser.add_argument("--loop", type=int, default=1,
                         help="Process the clip this many times (for a longer demo)")
+    parser.add_argument("--only-plate", action="append", dest="only_plates",
+                        help="Index only this plate from the clip (repeatable). "
+                             "Used when seeding several vehicles onto different "
+                             "routes from one recording, so each gets its own "
+                             "journey rather than every plate appearing at every "
+                             "camera.")
     parser.add_argument("--detected-at", default=None,
                         help="ISO-8601 UTC time to record these sightings at. Use when "
                              "seeding a route across several cameras so the intervals "
@@ -149,6 +155,11 @@ def main() -> int:
                         or not grammar.valid
                         or not grammar.state_valid):
                     rejected += 1
+                    continue
+
+                # When seeding several vehicles onto separate routes, take only
+                # the plate this pass is for.
+                if args.only_plates and plate not in args.only_plates:
                     continue
 
                 logger.info("PLATE %s conf=%.2f reads=%d%s", plate, confidence,

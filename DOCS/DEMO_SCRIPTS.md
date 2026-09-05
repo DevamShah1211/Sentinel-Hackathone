@@ -13,8 +13,8 @@ cd backend && python run_server.py
 # 2 · Frontend
 cd frontend && npm run dev
 
-# 3 · Seed the demonstration route (real inference, realistic timestamps)
-cd backend && powershell -File tools/seed_demo_route.ps1
+# 3 · Seed the demonstration journeys (real inference, realistic timestamps)
+cd backend && python tools/seed_demo_route.py --reset
 ```
 
 Then: browser to 125% zoom, 1080p/30fps in OBS, every unrelated tab and
@@ -76,6 +76,7 @@ demonstration. Submit the output report alongside it.
 | 9 | Search | Type a plate, results with crops | "Every sighting: camera, department, location, timestamp, confidence, and the evidence crop." |
 | 10 | Search, misspell one character | Fuzzy match still returns the sightings | "ANPR will misread a character. Trigram search recovers it — exact-match-only would fail in front of you on a plate we genuinely detected." |
 | 11 | Show Route on Map | Polyline with speeds, one flagged leg | "The route across cameras, with speed between each sighting and implausible transitions flagged rather than dropped." |
+| 11a | Search a **second** plate, e.g. `GJ18CD5678`, and show its route | A different set of cameras and times | "A different vehicle, a different journey — each route is reconstructed from that plate's own sightings." Worth doing: it proves the route is real rather than a fixed animation. |
 | 12 | Dashboard → Export | XLSX and PDF downloading, then open the PDF | "The output report, generated from the index — plates, timestamps, cameras, locations, and a header stating how the numbers were produced." |
 | 13 | Terminal: `analytics/audit` | Audit rows with actor, purpose, case reference | "Every search, route and export is recorded with who ran it and why. Surveillance capability with accountability attached." |
 | 14 | Slide or terminal | The yield table from `DOCS/MEASUREMENTS.md` §2a | **Say this plainly:** "One honest finding. On this grid our pipeline reads no valid plates. The detector proposed 165 plate-shaped regions and the OCR returned 87 strings — every one was roadside signage, and our Indian-plate validator rejected all of them. These are wide-area night PTZ overviews where a plate is five to fifteen pixels. The same pipeline recovers six of six on footage where plates are legible. The limit is camera siting, not the software — and that is a finding worth reporting to the department." |

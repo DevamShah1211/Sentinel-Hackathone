@@ -70,7 +70,14 @@ function RoutePanel({ route, onClose }: { route: RouteData; onClose: () => void 
                         <div style={{ fontFamily: 'var(--font-mono)', fontSize: 22, fontWeight: 700, letterSpacing: 2 }}>{route.plate}</div>
                     </div>
                     <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                        <span className="badge-pill pill-blue">{route.total_sightings} sightings</span>
+                        <span className="badge-pill pill-blue">
+                            {route.total_sightings} sighting{route.total_sightings === 1 ? '' : 's'}
+                        </span>
+                        {route.total_sightings === 1 && (
+                            <span className="badge-pill" style={{ background: 'var(--bg-input)', color: 'var(--text-secondary)' }}>
+                                no route — seen once
+                            </span>
+                        )}
                         {!!route.flagged_transitions && (
                             <span className="badge-pill" style={{ background: 'var(--red-glow)', color: 'var(--red)' }}>
                                 <AlertTriangle size={11} style={{ verticalAlign: -1 }} />{' '}
