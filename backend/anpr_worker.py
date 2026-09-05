@@ -236,9 +236,16 @@ def process_camera(camera: dict, detector: PlateDetector, publisher: DetectionPu
 
 
 def fetch_cameras(limit: int, only: list[str] | None = None) -> list[dict]:
-    """Ask the API which cameras to index."""
+    """
+    Ask the API which cameras to index.
+
+    Uses the internal stream endpoint rather than `GET /cameras`: the public route
+    serves browsers and deliberately withholds the credential-bearing RTSP URLs
+    that inference needs.
+    """
     try:
-        response = requests.get(f"{API_BASE}/cameras", params={"limit": 200}, timeout=20)
+        response = requests.get(f"{API_BASE}/cameras/internal/streams",
+                                params={"limit": 200, "live_only": True}, timeout=20)
         response.raise_for_status()
         cameras = response.json()
     except requests.RequestException as exc:

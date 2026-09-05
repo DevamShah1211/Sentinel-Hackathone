@@ -10,7 +10,7 @@ interface CameraFeature {
     properties: {
         id: string; native_id: string; name: string; department: string;
         status: string; is_live: boolean; codec: string;
-        hls_url: string; whep_url: string; rtsp_url: string;
+        hls_url: string;
         camera_type: string; address: string;
     }
 }
