@@ -467,10 +467,13 @@ connections to the sandbox gateway from one machine:
 | Concurrent | Succeeded | Wall time | Our CPU (of 20 cores) |
 |---|---|---|---|
 | 2 | 2 / 2 | 12 s | 4% |
-| 4 | 4 / 4 | 36 s | 4% |
-| 8 | 6 / 8 | 102 s | 4% |
+| 4 | 4 / 4 | 26 s | 4% |
+| 6 | 6 / 6 | 41 s | 5% |
+| 8 | 7 / 8 | 88 s | 4% |
 
-Accept times at eight connections: 4 s, 8 s, 21 s, 28 s, 57 s, 61 s, 65 s, 72 s.
+Accept times at eight connections: 4 s, 8 s, 27 s, 33 s, 56 s, 60 s, 63 s, 73 s.
+Measured after the organisers' 5 September fix; six concurrent streams is the
+dependable ceiling, and the platform's defaults are set to it.
 
 **Our machine sat at 4% CPU throughout.** Nothing on the consuming side was
 saturated. The gateway accepts connections close to serially, and the wait grows

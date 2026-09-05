@@ -257,15 +257,16 @@ Opening N concurrent RTSP connections to the sandbox gateway:
 | Concurrent | Succeeded | Wall time | **Our CPU** (20 cores) |
 |---|---|---|---|
 | 2 | 2 / 2 | 12 s | **4%** |
-| 4 | 4 / 4 | 36 s | **4%** |
-| 8 | 6 / 8 | 102 s | **4%** |
+| 4 | 4 / 4 | 26 s | **4%** |
+| 6 | 6 / 6 | 41 s | **5%** |
+| 8 | 7 / 8 | 88 s | **4%** |
 
-Accept times at eight: 4s · 8s · 21s · 28s · 57s · 61s · 65s · 72s — a queue.
+Accept times at eight: 4s · 8s · 27s · 33s · 56s · 60s · 63s · 73s — a queue.
 
-> **Our machine was idle at 4% CPU while the gateway took over a minute to accept
-> a connection.** The limit is the single shared ingress, not compute. That is the
-> 80,000-camera problem in miniature, and no amount of faster hardware on our side
-> moves it.
+> **Our machine was idle at 4% CPU while the gateway took 73 s to accept the
+> eighth connection.** The limit is the single shared ingress, not compute. That is
+> the 80,000-camera problem in miniature, and no amount of faster hardware on our
+> side moves it.
 
 **Flat central ingestion does not work, and here is the arithmetic**
 

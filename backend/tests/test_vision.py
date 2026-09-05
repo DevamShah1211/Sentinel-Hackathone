@@ -12,6 +12,7 @@ import pytest
 
 from app.vision import (
     RawDetection,
+    frame_is_smeared,
     Track,
     TrackManager,
     build_tiles,
@@ -151,3 +152,42 @@ class TestTrackManager:
         assert track.first_pts_ms == 5000
         assert track.last_pts_ms == 5200
         assert len(track.reads) == 2
+
+
+class TestSmearDetection:
+    """
+    A corrupt H.264 keyframe drags one row of pixels down the image. The result
+    still passes the decodable check — it has colour and edges — but is useless to
+    look at, so the relay holds the previous frame instead.
+    """
+
+    @staticmethod
+    def _scene() -> np.ndarray:
+        # A frame with horizontal structure, as any real street scene has.
+        rng = np.random.default_rng(11)
+        frame = np.zeros((360, 640, 3), np.uint8)
+        frame[:120] = (150, 140, 130)          # sky
+        frame[120:] = (70, 70, 72)             # road
+        for x in range(0, 640, 60):
+            frame[300:308, x:x + 34] = (235, 235, 230)   # lane markings
+        for _ in range(12):
+            x, y = int(rng.integers(0, 580)), int(rng.integers(140, 300))
+            frame[y:y + 34, x:x + 52] = tuple(int(v) for v in rng.integers(30, 210, 3))
+        return frame
+
+    def test_healthy_frame_is_not_smeared(self) -> None:
+        assert not frame_is_smeared(self._scene())
+
+    def test_row_dragged_down_is_detected(self) -> None:
+        frame = self._scene()
+        # Exactly what a lost macroblock row produces.
+        frame[120:, :] = frame[120:121, :]
+        assert frame_is_smeared(frame)
+
+    def test_empty_and_none_treated_as_unusable(self) -> None:
+        assert frame_is_smeared(None)
+        assert frame_is_smeared(np.zeros((0, 0, 3), np.uint8))
+
+    def test_uniform_frame_is_rejected(self) -> None:
+        # No structure in either direction: nothing worth showing.
+        assert frame_is_smeared(np.full((360, 640, 3), 128, np.uint8))

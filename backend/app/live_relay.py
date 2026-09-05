@@ -37,7 +37,7 @@ from dataclasses import dataclass, field
 import cv2
 import numpy as np
 
-from app.vision import StreamCapture, frame_is_decodable
+from app.vision import StreamCapture, frame_is_decodable, frame_is_smeared
 
 logger = logging.getLogger("sentinel.relay")
 
@@ -99,6 +99,7 @@ class _CameraRelay:
     latest_at: float = 0.0
     frame_seq: int = 0
     subscribers: int = 0
+    smeared_frames: int = 0
     error: str | None = None
     _thread: threading.Thread | None = None
     _stop: threading.Event = field(default_factory=threading.Event)
@@ -146,8 +147,15 @@ class _CameraRelay:
                 # detector. For viewing, only skip a frame that is genuinely
                 # unusable — and never let the gate stop the first frame from
                 # ever arriving, which leaves the tile spinning indefinitely.
-                if self.latest_frame is not None and not frame_is_decodable(frame):
-                    continue
+                if self.latest_frame is not None:
+                    if not frame_is_decodable(frame):
+                        continue
+                    # A corrupt keyframe smears the picture into vertical streaks.
+                    # Holding the last good frame is better than showing that: the
+                    # stream recovers at the next keyframe, usually within seconds.
+                    if frame_is_smeared(frame):
+                        self.smeared_frames += 1
+                        continue
 
                 # Hand on the decoded frame; each subscriber encodes it at the
                 # size and quality it asked for.
@@ -300,6 +308,7 @@ class RelayManager:
                     "has_frame": relay.latest_frame is not None,
                     "last_frame_age_s": (round(time.time() - relay.latest_at, 1)
                                          if relay.latest_at else None),
+                    "smeared_frames_skipped": relay.smeared_frames,
                     "error": relay.error,
                 }
                 for relay in self._relays.values()

@@ -86,8 +86,8 @@ If the video has room, this is worth thirty seconds. Show the concurrency table
 from `MEASUREMENTS.md` §5a and say:
 
 > "One more honest measurement. When we open eight camera connections at once,
-> the sandbox gateway takes seventy seconds to accept the eighth — while our
-> machine sits at four percent CPU. The limit is the shared gateway, not our
+> the sandbox gateway takes seventy-three seconds to accept the eighth — while our
+> machine sits at four percent CPU. Six streams it serves reliably. The limit is the shared gateway, not our
 > software. That is the eighty-thousand-camera problem at a scale of eight, and
 > it is exactly why our architecture is edge-first: a camera in Junagadh streams
 > to a Junagadh edge node, not across the state. Four hundred nodes at two

@@ -44,6 +44,19 @@ logger = logging.getLogger("sentinel.vision")
 MIN_GREY_STD = 12.0
 MIN_EDGE_DENSITY = 0.8
 
+# Ratio of vertical to horizontal gradient energy below which a frame is treated
+# as smeared by a corrupt keyframe. Real footage sits near 1.0; heavy streaking
+# collapses the vertical term.
+SMEAR_RATIO_THRESHOLD = 0.45
+
+# Note on what is deliberately NOT detected: blotchy false-colour corruption,
+# where lost residual data leaves luminance roughly right while chroma drifts
+# into vivid magentas and greens. A block-saturation metric was tried and
+# measured against real frames: a corrupt tile scored 0.260, a clean tile 0.222,
+# and a perfectly good night scene 0.320. There is no threshold that separates
+# them, so no filter is applied — blanking good footage to hide occasional
+# artefacts would be the worse trade. These frames recover at the next keyframe.
+
 
 # ─── Frame quality ────────────────────────────────────────────────────────────
 
@@ -62,6 +75,35 @@ def frame_is_decodable(frame: np.ndarray) -> bool:
         return False
     edges = cv2.Canny(grey, 60, 160)
     return float(edges.mean()) >= MIN_EDGE_DENSITY
+
+
+def frame_is_smeared(frame: np.ndarray, threshold: float = SMEAR_RATIO_THRESHOLD) -> bool:
+    """
+    Detect the vertical streaking left by a corrupt H.264 keyframe.
+
+    When a macroblock row is lost the decoder drags the last good row downwards,
+    producing long vertical runs of near-identical pixels. Real scenes have
+    horizontal structure — kerbs, road markings, vehicle roofs, building lines —
+    so a frame whose vertical gradients have collapsed relative to its horizontal
+    ones is almost certainly damaged rather than merely plain.
+
+    Cheap enough to run per relayed frame: two gradient passes on a downscaled
+    copy.
+    """
+    if frame is None or frame.size == 0:
+        return True
+    grey = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    # Downscale first — smearing is a large-scale artefact and this keeps the
+    # check to a fraction of a millisecond.
+    small = cv2.resize(grey, (320, 180), interpolation=cv2.INTER_AREA)
+
+    vertical = float(np.abs(np.diff(small.astype(np.int16), axis=0)).mean())
+    horizontal = float(np.abs(np.diff(small.astype(np.int16), axis=1)).mean())
+    if horizontal < 1e-3:
+        return True
+    # A healthy frame sits near 1.0. Heavy vertical smearing pushes this well
+    # below, because change down the image has been flattened out.
+    return (vertical / horizontal) < threshold
 
 
 # ─── Tiled inference ──────────────────────────────────────────────────────────

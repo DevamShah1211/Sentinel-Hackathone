@@ -163,19 +163,33 @@ asserting it.
 N concurrent RTSP connections opened simultaneously from one machine, recording
 how long the gateway took to accept each and deliver a first frame:
 
+Measured after the organisers' 5 September fix, which restored the feeds and
+added an authentication layer to both the portal and RTSP:
+
 | Concurrent connections | Succeeded | Wall time | Our CPU (mean / peak of 20 cores) |
 |---|---|---|---|
 | 2 | **2 / 2** | 12 s | 4% / 6% |
-| 4 | **4 / 4** | 36 s | 4% / 12% |
-| 8 | 6 / 8 | 102 s | 4% / 11% |
+| 4 | **4 / 4** | 26 s | 4% / 8% |
+| 6 | **6 / 6** | 41 s | 5% / 10% |
+| 8 | 7 / 8 | 88 s | 4% / 8% |
 
-Per-connection accept times at N=8: 4.3 s, 8.2 s, 20.6 s, 28.4 s, 57.4 s, 61.3 s,
-65.2 s, 71.7 s — a queue, not a load curve.
+Per-connection accept times at N=8: 3.8 s, 7.8 s, 26.7 s, 33.3 s, 56.4 s, 60.0 s,
+63.0 s, 73.3 s — a queue, not a load curve.
 
-**Our machine is idle at 4% CPU while connections take over a minute to be
+**Six concurrent streams is the dependable ceiling on this gateway**, and the
+platform's defaults are set to it: the wall opens at 2×2 and the indexer runs six
+streams. Authentication is confirmed working — an unauthenticated RTSP request
+returns `401 Unauthorized`, and the registered credentials connect in 3.6 s.
+
+**Our machine is idle at 4% CPU while the eighth connection takes 73 s to be
 accepted.** Nothing on this side is saturated: not CPU, not memory, not the
-decoder, not the network. The sandbox gateway accepts connections roughly
-serially, and the accept time grows linearly with how many are waiting.
+decoder, not the network. The gateway accepts connections roughly serially, and
+the accept time grows linearly with how many are waiting.
+
+The organisers' fix improved the HTTP tier markedly — a portal request went from
+9–30 s or timing out, to 0.5–7 s — and raised the eight-connection result from
+6/8 to 7/8. The serial-accept behaviour is unchanged, which is consistent with it
+being a property of a single shared gateway rather than a fault.
 
 This matters for the scale argument in two ways.
 
