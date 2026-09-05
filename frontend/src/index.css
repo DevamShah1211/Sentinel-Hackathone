@@ -430,15 +430,19 @@ tr:last-child td { border-bottom: none; }
 
 .detection-card:hover { border-color: var(--accent); }
 .detection-crop {
-  width: 80px; height: 48px;
-  object-fit: cover;
+  /* Plates are roughly 4.5:1, so the thumbnail matches that and uses `contain`:
+     `cover` clipped the ends off the registration, which defeats the purpose of
+     showing evidence at all. */
+  width: 108px; height: 44px;
+  object-fit: contain;
   border-radius: var(--radius);
-  background: var(--bg-input);
+  background: #0d1420;
   flex-shrink: 0;
   border: 1px solid var(--border-light);
+  cursor: zoom-in;
 }
 .detection-crop-placeholder {
-  width: 80px; height: 48px;
+  width: 108px; height: 44px;
   display: flex; align-items: center; justify-content: center;
   background: var(--bg-input); border: 1px solid var(--border-light);
   border-radius: var(--radius); color: var(--text-muted); font-size: 11px;

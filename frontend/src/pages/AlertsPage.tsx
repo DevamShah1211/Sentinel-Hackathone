@@ -40,7 +40,19 @@ function AlertRow({ a, onAck, onResolve }: { a: AlertRecord; onAck: (id: string)
                     {a.acknowledged_by && <span> &nbsp;·&nbsp; ✅ Ack by {a.acknowledged_by}</span>}
                 </div>
             </div>
-            {a.crop_uri && <img src={a.crop_uri} alt="crop" style={{ width: 64, height: 40, objectFit: 'cover', borderRadius: 4, border: '1px solid var(--border-light)', flexShrink: 0 }} />}
+            {a.crop_uri && (
+                <img
+                    src={a.crop_uri}
+                    alt={`Plate crop for ${a.plate_text}`}
+                    /* `contain` on a plate-shaped box: cover clipped the ends off
+                       the registration, which is the whole point of the image. */
+                    style={{
+                        width: 96, height: 38, objectFit: 'contain',
+                        borderRadius: 4, border: '1px solid var(--border-light)',
+                        background: '#0d1420', flexShrink: 0,
+                    }}
+                />
+            )}
             <div className="alert-actions">
                 {a.status === 'new' && (
                     <button className="btn btn-ghost btn-sm" onClick={() => onAck(a.id)} title="Acknowledge">

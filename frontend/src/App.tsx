@@ -8,7 +8,7 @@ import AlertsPage from './pages/AlertsPage'
 import WatchlistPage from './pages/WatchlistPage'
 import DashboardPage from './pages/DashboardPage'
 import LoginPage from './pages/LoginPage'
-import { useAlertWebSocket } from './hooks/useAlertWebSocket'
+import { useAlertWebSocket, type WsStatus } from './hooks/useAlertWebSocket'
 import Toast from './components/Toast'
 import { clearSession, getStoredUser, type AuthUser } from './api/client'
 
@@ -69,8 +69,8 @@ function Sidebar({ newAlertCount }: { newAlertCount: number }) {
     )
 }
 
-function Topbar({ connected, user, onSignOut }: {
-    connected: boolean; user: AuthUser | null; onSignOut: () => void
+function Topbar({ status, user, onSignOut }: {
+    status: WsStatus; user: AuthUser | null; onSignOut: () => void
 }) {
     const { pathname } = useLocation()
     return (
@@ -78,12 +78,13 @@ function Topbar({ connected, user, onSignOut }: {
             <h1 className="topbar-title">{PAGE_TITLES[pathname] ?? 'Sentinel'}</h1>
             <div className="topbar-right">
                 <div
-                    className={`live-indicator${connected ? '' : ' disconnected'}`}
+                    className={`live-indicator${status === 'live' ? '' : ' disconnected'}`}
                     role="status"
                     aria-live="polite"
+                    title="Live alert feed"
                 >
                     <div className="pulse-dot" aria-hidden="true" />
-                    {connected ? 'LIVE' : 'RECONNECTING'}
+                    {status === 'live' ? 'LIVE' : status === 'connecting' ? 'CONNECTING' : 'RECONNECTING'}
                 </div>
                 {user && (
                     <div className="topbar-user">
@@ -103,14 +104,14 @@ function Topbar({ connected, user, onSignOut }: {
 }
 
 function Shell({ user, onSignOut }: { user: AuthUser | null; onSignOut: () => void }) {
-    const { alerts, connected, clearAlert } = useAlertWebSocket()
+    const { alerts, status, clearAlert } = useAlertWebSocket()
     const toasts = alerts.slice(0, 3)
 
     return (
         <div className="app-layout">
             <Sidebar newAlertCount={alerts.length} />
             <div className="main-area">
-                <Topbar connected={connected} user={user} onSignOut={onSignOut} />
+                <Topbar status={status} user={user} onSignOut={onSignOut} />
                 <Routes>
                     <Route path="/" element={<DashboardPage />} />
                     <Route path="/map" element={<MapPage />} />
