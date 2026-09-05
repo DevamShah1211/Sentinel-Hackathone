@@ -39,3 +39,4 @@ Thumbs.db
 backend/evidence_crops/
 backend/sample_feeds/
 backend/geocode_cache.json
+backend/logs/
