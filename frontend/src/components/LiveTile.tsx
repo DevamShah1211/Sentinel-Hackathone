@@ -16,8 +16,13 @@ export type TileState = 'connecting' | 'playing' | 'error'
  * pointed at a multipart stream keeps downloading forever otherwise, and nine of
  * them would hold nine connections open behind a hidden tab.
  */
+/** Matches the server's profiles: a maximised tile is worth more bytes than one
+ *  of nine, so quality follows the layout rather than being fixed. */
+export type StreamProfile = 'high' | 'balanced' | 'low'
+
 export default function LiveTile({
     cameraId, alt, className, style, onStateChange, showRetry = true,
+    profile = 'balanced',
 }: {
     cameraId: string
     alt: string
@@ -25,6 +30,7 @@ export default function LiveTile({
     style?: React.CSSProperties
     onStateChange?: (s: TileState) => void
     showRetry?: boolean
+    profile?: StreamProfile
 }) {
     const imgRef = useRef<HTMLImageElement | null>(null)
     const [state, setState] = useState<TileState>('connecting')
@@ -42,7 +48,8 @@ export default function LiveTile({
         update('connecting')
         // The cache-buster forces a new request on retry; browsers will otherwise
         // reuse the dead connection.
-        const src = `/api/v1/cameras/live/${encodeURIComponent(cameraId)}?t=${Date.now()}`
+        const src = `/api/v1/cameras/live/${encodeURIComponent(cameraId)}`
+            + `?profile=${profile}&t=${Date.now()}`
 
         const onLoad = () => update('playing')
         const onError = () => update('error')
@@ -54,7 +61,8 @@ export default function LiveTile({
             if (document.hidden) {
                 img.removeAttribute('src')
             } else {
-                img.src = `/api/v1/cameras/live/${encodeURIComponent(cameraId)}?t=${Date.now()}`
+                img.src = `/api/v1/cameras/live/${encodeURIComponent(cameraId)}`
+                    + `?profile=${profile}&t=${Date.now()}`
             }
         }
         document.addEventListener('visibilitychange', onVisibility)
@@ -66,7 +74,7 @@ export default function LiveTile({
             // Dropping the src is what actually closes the HTTP connection.
             img.removeAttribute('src')
         }
-    }, [cameraId, attempt, update])
+    }, [cameraId, attempt, profile, update])
 
     return (
         <>

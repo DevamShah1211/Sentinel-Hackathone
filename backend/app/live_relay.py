@@ -35,23 +35,34 @@ import time
 from dataclasses import dataclass, field
 
 import cv2
+import numpy as np
 
 from app.vision import StreamCapture, frame_is_decodable
 
 logger = logging.getLogger("sentinel.relay")
 
-# Frames pushed to browsers per second. The wall is for situational awareness,
-# not forensics, and nine tiles at a higher rate would saturate a laptop's
-# decoder for no operational gain.
-TARGET_FPS = 6.0
+# Encoding is far cheaper than it first appears. Measured on this machine, a
+# 1280 px frame at quality 88 encodes in 1.7 ms and a 1080p->720p resize costs
+# 1.1 ms, so one core sustains several hundred frames a second. The binding
+# constraint is bandwidth to the browser and the browser's own decode, not CPU —
+# which is why these values are chosen per quality profile rather than set to a
+# single cautious number.
+#
+# Profiles are (max_edge, jpeg_quality, fps). The client asks for one; the
+# default suits a 2x2 wall on a local network.
+QUALITY_PROFILES: dict[str, tuple[int, int, float]] = {
+    # A single maximised tile: closest to source, worth the bytes.
+    "high":     (1600, 88, 20.0),
+    # 2x2 — the default wall. ~30 Mbit/s across four tiles.
+    "balanced": (1280, 84, 15.0),
+    # 3x3 and above, where nine streams share the pipe.
+    "low":      (960, 76, 12.0),
+}
+DEFAULT_PROFILE = "balanced"
 
-# JPEG quality. 65 keeps a 1080p frame around 60-90 KB, which nine tiles can
-# sustain on a local network.
-JPEG_QUALITY = 65
-
-# Longest edge of a relayed frame. Tiles are ~500 px wide on a 3x3 wall, so
-# sending full 1080p wastes bandwidth and encode time.
-MAX_EDGE = 960
+# Upstream delivers 14-23 fps, so asking for more than that yields duplicate
+# frames rather than smoother video.
+MAX_USEFUL_FPS = 25.0
 
 # A relay with no subscribers shuts down after this, releasing the upstream
 # connection back to the gateway.
@@ -74,11 +85,19 @@ RELAY_SETTLE_FRAMES = 8
 
 @dataclass
 class _CameraRelay:
-    """One RTSP connection, shared by every viewer of that camera."""
+    """
+    One RTSP connection, shared by every viewer of that camera.
+
+    The relay decodes at full rate and keeps the newest frame. Each subscriber
+    encodes at whatever profile it asked for, so a maximised tile can run at high
+    quality while the rest of the wall stays economical — without opening a
+    second connection to the gateway.
+    """
     native_id: str
     url: str
-    latest_jpeg: bytes | None = None
+    latest_frame: "np.ndarray | None" = None
     latest_at: float = 0.0
+    frame_seq: int = 0
     subscribers: int = 0
     error: str | None = None
     _thread: threading.Thread | None = None
@@ -99,8 +118,8 @@ class _CameraRelay:
     def _run(self) -> None:
         capture = StreamCapture(self.url, name=f"relay-{self.native_id}",
                                 idr_settle_frames=RELAY_SETTLE_FRAMES)
-        encode_params = [int(cv2.IMWRITE_JPEG_QUALITY), JPEG_QUALITY]
-        min_interval = 1.0 / TARGET_FPS
+        # Decode at the upstream's own rate; subscribers throttle themselves.
+        min_interval = 1.0 / MAX_USEFUL_FPS
         last_emit = 0.0
         idle_since: float | None = None
 
@@ -127,21 +146,14 @@ class _CameraRelay:
                 # detector. For viewing, only skip a frame that is genuinely
                 # unusable — and never let the gate stop the first frame from
                 # ever arriving, which leaves the tile spinning indefinitely.
-                if self.latest_jpeg is not None and not frame_is_decodable(frame):
+                if self.latest_frame is not None and not frame_is_decodable(frame):
                     continue
 
-                height, width = frame.shape[:2]
-                if max(height, width) > MAX_EDGE:
-                    scale = MAX_EDGE / max(height, width)
-                    frame = cv2.resize(frame, (int(width * scale), int(height * scale)),
-                                       interpolation=cv2.INTER_AREA)
-
-                ok, buffer = cv2.imencode(".jpg", frame, encode_params)
-                if not ok:
-                    continue
-
-                self.latest_jpeg = buffer.tobytes()
+                # Hand on the decoded frame; each subscriber encodes it at the
+                # size and quality it asked for.
+                self.latest_frame = frame
                 self.latest_at = time.time()
+                self.frame_seq += 1
                 self.error = None
                 self._frame_ready.set()
         except Exception as exc:
@@ -154,10 +166,24 @@ class _CameraRelay:
             logger.info("%s: relay ended", self.native_id)
 
     def wait_for_first_frame(self, timeout: float) -> bool:
-        if self.latest_jpeg is not None:
+        if self.latest_frame is not None:
             return True
         self._frame_ready.wait(timeout)
-        return self.latest_jpeg is not None
+        return self.latest_frame is not None
+
+    def encode(self, max_edge: int, quality: int) -> bytes | None:
+        """Encode the newest frame at the requested size and quality."""
+        frame = self.latest_frame
+        if frame is None:
+            return None
+        height, width = frame.shape[:2]
+        if max(height, width) > max_edge:
+            scale = max_edge / max(height, width)
+            frame = cv2.resize(frame, (int(width * scale), int(height * scale)),
+                               interpolation=cv2.INTER_AREA)
+        ok, buffer = cv2.imencode(".jpg", frame,
+                                  [int(cv2.IMWRITE_JPEG_QUALITY), quality])
+        return buffer.tobytes() if ok else None
 
 
 # The gateway refuses or stalls when many RTSP connections are opened at once —
@@ -197,16 +223,21 @@ class RelayManager:
         relay.start()
         return relay
 
-    async def stream(self, native_id: str, url: str):
+    async def stream(self, native_id: str, url: str, profile: str = DEFAULT_PROFILE):
         """
         Yield an MJPEG multipart stream for one camera.
 
-        Frames are read from the shared relay rather than the gateway, so ten
-        viewers of one camera still cost one upstream connection.
+        Frames come from the shared relay rather than the gateway, so ten viewers
+        of one camera still cost one upstream connection. Encoding happens per
+        subscriber, so a maximised tile can run at high quality while the rest of
+        the wall stays economical.
         """
+        max_edge, quality, fps = QUALITY_PROFILES.get(
+            profile, QUALITY_PROFILES[DEFAULT_PROFILE])
         relay = self._relay_for(native_id, url)
         relay.subscribers += 1
         boundary = b"--sentinelframe\r\n"
+        frame_interval = 1.0 / fps
 
         try:
             ready = await asyncio.to_thread(
@@ -217,37 +248,44 @@ class RelayManager:
                                FIRST_FRAME_TIMEOUT_SECONDS)
                 return
 
-            last_sent = 0.0
+            last_seq = -1
             while True:
-                frame = relay.latest_jpeg
-                stamp = relay.latest_at
+                started = time.monotonic()
 
-                if frame is not None and stamp != last_sent:
-                    last_sent = stamp
-                    yield (boundary
-                           + b"Content-Type: image/jpeg\r\n"
-                           + f"Content-Length: {len(frame)}\r\n\r\n".encode()
-                           + frame + b"\r\n")
+                # Only encode when the relay has produced a new frame; re-sending
+                # the same picture wastes CPU and bandwidth.
+                if relay.frame_seq != last_seq:
+                    last_seq = relay.frame_seq
+                    jpeg = await asyncio.to_thread(relay.encode, max_edge, quality)
+                    if jpeg:
+                        header = (b"Content-Type: image/jpeg\r\n"
+                                  + f"Content-Length: {len(jpeg)}\r\n\r\n".encode())
+                        yield boundary + header + jpeg + b"\r\n"
 
                 # The upstream died and no new frames are arriving.
                 if relay.latest_at and time.time() - relay.latest_at > 20:
-                    logger.info("%s: upstream went quiet, ending client stream", native_id)
+                    logger.info("%s: upstream went quiet, ending client stream",
+                                native_id)
                     return
 
-                await asyncio.sleep(1.0 / (TARGET_FPS * 1.5))
+                elapsed = time.monotonic() - started
+                await asyncio.sleep(max(0.0, frame_interval - elapsed))
         except (asyncio.CancelledError, GeneratorExit):
             # The browser closed the tab or navigated away — expected.
             raise
         finally:
             relay.subscribers = max(0, relay.subscribers - 1)
 
-    def snapshot(self, native_id: str, url: str, timeout: float = 20.0) -> bytes | None:
+    def snapshot(self, native_id: str, url: str, timeout: float = 20.0,
+                 profile: str = "balanced") -> bytes | None:
         """A single current frame, for a map popup or a still preview."""
+        max_edge, quality, _fps = QUALITY_PROFILES.get(profile,
+                                                       QUALITY_PROFILES[DEFAULT_PROFILE])
         relay = self._relay_for(native_id, url)
         relay.subscribers += 1
         try:
             if relay.wait_for_first_frame(timeout):
-                return relay.latest_jpeg
+                return relay.encode(max_edge, quality)
             return None
         finally:
             relay.subscribers = max(0, relay.subscribers - 1)
@@ -259,7 +297,7 @@ class RelayManager:
                     "native_id": relay.native_id,
                     "running": bool(relay._thread and relay._thread.is_alive()),
                     "subscribers": relay.subscribers,
-                    "has_frame": relay.latest_jpeg is not None,
+                    "has_frame": relay.latest_frame is not None,
                     "last_frame_age_s": (round(time.time() - relay.latest_at, 1)
                                          if relay.latest_at else None),
                     "error": relay.error,

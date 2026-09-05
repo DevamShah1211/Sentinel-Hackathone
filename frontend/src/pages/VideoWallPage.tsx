@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { LayoutGrid, Maximize2, Minimize2, RotateCw } from 'lucide-react'
 import { getCameras } from '../api/client'
-import LiveTile, { type TileState } from '../components/LiveTile'
+import LiveTile, { type StreamProfile, type TileState } from '../components/LiveTile'
 
 interface Camera {
     id: string; native_id: string; name: string; department: string
@@ -59,10 +59,10 @@ function CameraPicker({ cameras, onPick }: { cameras: Camera[]; onPick: (c: Came
     )
 }
 
-function VideoTile({ slot, index, onMaximise, onCameraChange, cameras, isMaximised }: {
+function VideoTile({ slot, index, onMaximise, onCameraChange, cameras, isMaximised, profile }: {
     slot: Slot; index: number; onMaximise: (i: number) => void
     onCameraChange: (i: number, c: Camera | null) => void
-    cameras: Camera[]; isMaximised: boolean
+    cameras: Camera[]; isMaximised: boolean; profile: StreamProfile
 }) {
     const [showPicker, setShowPicker] = useState(false)
     const [reloadKey, setReloadKey] = useState(0)
@@ -93,6 +93,7 @@ function VideoTile({ slot, index, onMaximise, onCameraChange, cameras, isMaximis
                 cameraId={cam.native_id}
                 alt={`Live view from ${cam.name}`}
                 onStateChange={handleState}
+                profile={profile}
             />
 
             <div className="tile-overlay">
@@ -178,6 +179,11 @@ export default function VideoWallPage() {
         setSlots(prev => prev.map((s, i) => (i === idx ? { ...s, camera: cam } : s)))
 
     const gridCount = layout === '3x3' ? 9 : layout === '2x2' ? 4 : 1
+    // Fewer tiles on screen means each can afford more resolution and frames.
+    const profile: StreamProfile =
+        maximised !== null || layout === '1x1' ? 'high'
+        : layout === '2x2' ? 'balanced'
+        : 'low'
     const displaySlots = maximised !== null
         ? [{ ...slots[maximised], isHero: false }]
         : slots.slice(0, gridCount)
@@ -223,6 +229,7 @@ export default function VideoWallPage() {
                                 index={realIndex}
                                 cameras={cameras}
                                 isMaximised={maximised === realIndex}
+                                profile={profile}
                                 onMaximise={handleMaximise}
                                 onCameraChange={handleCameraChange}
                             />

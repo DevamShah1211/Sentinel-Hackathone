@@ -204,7 +204,12 @@ async def _camera_stream_url(native_id: str, db: AsyncSession) -> tuple[str, str
 
 
 @router.get("/live/{native_id}", summary="Live MJPEG stream for a camera")
-async def live_stream(native_id: str, db: AsyncSession = Depends(get_db)):
+async def live_stream(
+    native_id: str,
+    db: AsyncSession = Depends(get_db),
+    profile: str = Query("balanced", pattern="^(high|balanced|low)$",
+                         description="high = maximised tile, balanced = 2x2, low = 3x3"),
+):
     """
     Stream a camera as MJPEG.
 
@@ -214,7 +219,7 @@ async def live_stream(native_id: str, db: AsyncSession = Depends(get_db)):
     """
     url, _name = await _camera_stream_url(native_id, db)
     return StreamingResponse(
-        relay_manager.stream(native_id, url),
+        relay_manager.stream(native_id, url, profile),
         media_type="multipart/x-mixed-replace; boundary=sentinelframe",
         headers={
             "Cache-Control": "no-store, no-cache, must-revalidate",
