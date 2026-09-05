@@ -232,9 +232,30 @@ async def plate_route(
     result = await db.execute(q)
     rows = result.all()
 
-    sightings = []
-    for i, row in enumerate(rows):
+    # One vehicle passing one camera can produce several detections — a track that
+    # fragments, or a vehicle that lingers in view. For a route those are one
+    # sighting, and showing them separately produces meaningless 0 km/h legs
+    # between a camera and itself. Consecutive detections at the same camera within
+    # this window collapse into the most confident one. Twenty minutes is chosen so
+    # a vehicle genuinely returning to a junction later still appears twice.
+    SAME_PASS_SECONDS = 20 * 60
+
+    collapsed: list = []
+    for row in rows:
         det: Detection = row[0]
+        if collapsed:
+            previous_det, previous_row = collapsed[-1]
+            same_camera = previous_det.camera_id == det.camera_id
+            gap = (det.detected_at - previous_det.detected_at).total_seconds()
+            if same_camera and gap <= SAME_PASS_SECONDS:
+                # Keep whichever read the pipeline was more confident about.
+                if (det.confidence or 0) > (previous_det.confidence or 0):
+                    collapsed[-1] = (det, row)
+                continue
+        collapsed.append((det, row))
+
+    sightings = []
+    for i, (det, row) in enumerate(collapsed):
         s = {
             "index": i,
             "detection_id": str(det.id),
