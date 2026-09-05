@@ -17,6 +17,8 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Sequence
 
+from app.gap_analysis import NOMINAL_COVERAGE_KM
+
 BRAND_DARK = "1A2332"
 BRAND_ACCENT = "2F6FEB"
 
@@ -310,4 +312,126 @@ def build_pdf(rows: Sequence[ReportRow], meta: ReportMeta,
         canvas.restoreState()
 
     document.build(story, onFirstPage=decorate, onLaterPages=decorate)
+    return buffer.getvalue()
+
+
+# ─── Gap-analysis report (Model 1 deliverable) ────────────────────────────────
+
+SEVERITY_FILL = {
+    "critical": "C0392B",
+    "high": "E67E22",
+    "medium": "F1C40F",
+    "warning": "E67E22",
+    "info": "5D6D7E",
+    "covered": "27AE60",
+}
+
+
+def build_gap_xlsx(report) -> bytes:
+    """
+    Render the coverage and condition analysis as a workbook.
+
+    Three sheets, because they answer three different questions: what the estate
+    looks like overall, which districts are thin, and which individual cameras
+    need attention.
+    """
+    import openpyxl
+    from openpyxl.styles import Alignment, Font, PatternFill
+    from openpyxl.utils import get_column_letter
+
+    workbook = openpyxl.Workbook()
+    header_fill = PatternFill("solid", fgColor=BRAND_DARK)
+    header_font = Font(bold=True, color="FFFFFF")
+
+    def write_header(sheet, titles: list[str]) -> None:
+        for column, title in enumerate(titles, start=1):
+            cell = sheet.cell(1, column, title)
+            cell.fill = header_fill
+            cell.font = header_font
+            cell.alignment = Alignment(horizontal="center", vertical="center")
+        sheet.row_dimensions[1].height = 22
+        sheet.freeze_panes = "A2"
+
+    # ── Summary ──────────────────────────────────────────────────────────────
+    summary = workbook.active
+    summary.title = "Summary"
+    summary["A1"] = "Sentinel — Coverage Gap Analysis"
+    summary["A1"].font = Font(size=16, bold=True, color=BRAND_DARK)
+    summary["A2"] = "Gujarat CCTV Integration Hackathon 2026 · Model 1 deliverable"
+    summary["A2"].font = Font(size=11, color="555555")
+
+    facts = [
+        ("Generated (UTC)", report.generated_at.strftime("%Y-%m-%d %H:%M:%S")),
+        ("Cameras in registry", report.total_cameras),
+        ("Cameras with resolved locations", report.located_cameras),
+        ("Districts assessed", report.districts_total),
+        ("Districts with coverage", report.districts_covered),
+        ("Districts without coverage", report.districts_uncovered),
+        ("Coverage", f"{report.coverage_percent}%"),
+        ("Ageing / condition findings", len(report.ageing)),
+    ]
+    for offset, (label, value) in enumerate(facts, start=4):
+        summary.cell(offset, 1, label).font = Font(bold=True)
+        summary.cell(offset, 2, value)
+
+    notes_row = 4 + len(facts) + 1
+    summary.cell(notes_row, 1, "Method and limitations").font = Font(bold=True, size=12)
+    notes = [
+        "A district counts as covered when a registered camera lies within "
+        f"{NOMINAL_COVERAGE_KM:.0f} km of its centre. This is a spatial test, not a "
+        "count: several cameras on one junction do not cover a district.",
+        "Distances are great-circle from the district centre to the nearest camera, "
+        "so they understate road distance and the real gap is usually larger.",
+        "Condition findings use only what the registry holds. Where a field is "
+        "absent the camera is reported as unknown, never assumed healthy.",
+        "The sandbox catalogue publishes 30 cameras for demonstration. Uncovered "
+        "districts here reflect that sample, not the true Gujarat estate.",
+    ]
+    for offset, note in enumerate(notes, start=notes_row + 1):
+        cell = summary.cell(offset, 1, f"• {note}")
+        cell.alignment = Alignment(wrap_text=True, vertical="top")
+        summary.merge_cells(start_row=offset, start_column=1, end_row=offset, end_column=6)
+        summary.row_dimensions[offset].height = 30
+    summary.column_dimensions["A"].width = 32
+    summary.column_dimensions["B"].width = 58
+
+    # ── Coverage by district ─────────────────────────────────────────────────
+    sheet = workbook.create_sheet("Coverage by district")
+    write_header(sheet, ["District", "Severity", "Cameras within "
+                         f"{NOMINAL_COVERAGE_KM:.0f} km", "Nearest camera (km)",
+                         "Nearest camera", "Latitude", "Longitude"])
+    for index, entry in enumerate(
+            sorted(report.coverage, key=lambda c: -(c.nearest_camera_km or 0)), start=2):
+        sheet.cell(index, 1, entry.district)
+        severity_cell = sheet.cell(index, 2, entry.severity.title())
+        severity_cell.fill = PatternFill(
+            "solid", fgColor=SEVERITY_FILL.get(entry.severity, "5D6D7E"))
+        severity_cell.font = Font(bold=True, color="FFFFFF")
+        sheet.cell(index, 3, entry.cameras_within_radius)
+        sheet.cell(index, 4, entry.nearest_camera_km)
+        sheet.cell(index, 5, entry.nearest_camera_name)
+        sheet.cell(index, 6, entry.lat)
+        sheet.cell(index, 7, entry.lon)
+    for column, width in enumerate([22, 12, 20, 20, 34, 12, 12], start=1):
+        sheet.column_dimensions[get_column_letter(column)].width = width
+
+    # ── Ageing infrastructure ────────────────────────────────────────────────
+    sheet = workbook.create_sheet("Infrastructure condition")
+    write_header(sheet, ["Camera ID", "Name", "District", "Severity",
+                         "Issue", "Evidence"])
+    for index, finding in enumerate(report.ageing, start=2):
+        sheet.cell(index, 1, finding.native_id)
+        sheet.cell(index, 2, finding.name)
+        sheet.cell(index, 3, finding.district)
+        severity_cell = sheet.cell(index, 4, finding.severity.title())
+        severity_cell.fill = PatternFill(
+            "solid", fgColor=SEVERITY_FILL.get(finding.severity, "5D6D7E"))
+        severity_cell.font = Font(bold=True, color="FFFFFF")
+        sheet.cell(index, 5, finding.issue)
+        sheet.cell(index, 6, finding.detail).alignment = Alignment(wrap_text=True)
+    for column, width in enumerate([14, 30, 18, 12, 36, 60], start=1):
+        sheet.column_dimensions[get_column_letter(column)].width = width
+
+    buffer = io.BytesIO()
+    workbook.save(buffer)
     return buffer.getvalue()

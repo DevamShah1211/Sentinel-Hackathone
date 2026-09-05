@@ -3,23 +3,28 @@ Cameras router — Model 1 (Registry & GIS) core.
 Provides GeoJSON, paginated list, CRUD, and spatial queries.
 """
 import asyncio
+import csv
+import io
 import logging
 import re
 import time
+from datetime import datetime, timezone
 from typing import Optional
 from uuid import UUID
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile
 from fastapi import status as http_status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import func, select, and_, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app import audit
 from app.database import get_db
 from app.live_relay import relay_manager
 from app.models import Camera
+from app.security import Principal, RequireStateAdmin
 from app.settings import settings
 
 logger = logging.getLogger("sentinel.cameras")
@@ -252,7 +257,10 @@ async def live_status():
     return {"relays": relay_manager.status()}
 
 
-@router.get("/{camera_id}", response_model=CameraOut, summary="Get camera by UUID")
+# The path is constrained to a UUID shape so literal routes declared after this
+# one — /health-status, /bulk-import, /live-status — are never swallowed by the
+# catch-all. Ordering alone is too easy to break when endpoints are appended.
+@router.get("/{camera_id:uuid}", response_model=CameraOut, summary="Get camera by UUID")
 async def get_camera(camera_id: UUID, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Camera).where(Camera.id == camera_id))
     cam = result.scalar_one_or_none()
@@ -270,7 +278,7 @@ async def create_camera(body: CameraCreate, db: AsyncSession = Depends(get_db)):
     return serialise_camera(cam)
 
 
-@router.patch("/{camera_id}", response_model=CameraOut, summary="Update a camera record")
+@router.patch("/{camera_id:uuid}", response_model=CameraOut, summary="Update a camera record")
 async def update_camera(camera_id: UUID, body: dict, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Camera).where(Camera.id == camera_id))
     cam = result.scalar_one_or_none()
@@ -511,3 +519,216 @@ async def internal_stream_urls(
     ]
 
 
+# ─── Model 1: bulk onboarding, health, gap analysis ──────────────────────────
+
+@router.post("/bulk-import", summary="Bulk camera onboarding from CSV")
+async def bulk_import_cameras(
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    dry_run: bool = Query(False, description="Validate without writing"),
+    principal: Principal = RequireStateAdmin,
+):
+    """
+    Onboard many cameras at once from a CSV.
+
+    The problem statement asks for "bulk import, manual entry, and API-based
+    camera onboarding"; this is the first, POST /cameras is the second, and the
+    catalogue sync is the third.
+
+    Recognised columns (only native_id and name are required):
+
+        native_id,name,department,lat,lon,address,rtsp_url,codec,resolution,
+        camera_type,make,model,connectivity,installation_date,ownership
+
+    Rows are validated individually and a bad row never aborts the import — the
+    response reports which rows failed and why, so a department can fix twelve
+    lines rather than resubmit a thousand. dry_run=true validates and writes
+    nothing, which is how you would check a file before committing it.
+    """
+    raw = (await file.read()).decode("utf-8-sig", errors="replace")
+    reader = csv.DictReader(io.StringIO(raw))
+
+    created = updated = 0
+    errors: list[dict] = []
+    seen: set[str] = set()
+
+    for line_number, row in enumerate(reader, start=2):   # row 1 is the header
+        cleaned = {(k or "").strip().lower(): (v or "").strip()
+                   for k, v in row.items() if k}
+        native_id = cleaned.get("native_id") or cleaned.get("id")
+        name = cleaned.get("name")
+
+        if not native_id:
+            errors.append({"line": line_number, "error": "native_id is required"})
+            continue
+        if not name:
+            errors.append({"line": line_number, "error": "name is required"})
+            continue
+        if native_id in seen:
+            errors.append({"line": line_number,
+                           "error": f"duplicate native_id {native_id!r} in this file"})
+            continue
+        seen.add(native_id)
+
+        def number(field_name: str) -> float | None:
+            value = cleaned.get(field_name)
+            if not value:
+                return None
+            try:
+                return float(value)
+            except ValueError:
+                errors.append({"line": line_number,
+                               "error": f"{field_name} {value!r} is not a number"})
+                return None
+
+        lat, lon = number("lat"), number("lon")
+        if lat is not None and not (-90 <= lat <= 90):
+            errors.append({"line": line_number, "error": f"lat {lat} out of range"})
+            continue
+        if lon is not None and not (-180 <= lon <= 180):
+            errors.append({"line": line_number, "error": f"lon {lon} out of range"})
+            continue
+
+        installed = None
+        if cleaned.get("installation_date"):
+            try:
+                installed = datetime.fromisoformat(cleaned["installation_date"])
+                if installed.tzinfo is None:
+                    installed = installed.replace(tzinfo=timezone.utc)
+            except ValueError:
+                errors.append({"line": line_number,
+                               "error": "installation_date must be ISO-8601, "
+                                        "e.g. 2021-03-14"})
+
+        fields = {
+            "name": name,
+            "department": cleaned.get("department") or "Unknown",
+            "lat": lat,
+            "lon": lon,
+            "address": cleaned.get("address") or None,
+            "rtsp_url": cleaned.get("rtsp_url") or None,
+            "hls_url": cleaned.get("hls_url") or None,
+            "codec": cleaned.get("codec") or None,
+            "resolution": cleaned.get("resolution") or None,
+            "camera_type": cleaned.get("camera_type") or None,
+            "make": cleaned.get("make") or None,
+            "model": cleaned.get("model") or None,
+            "connectivity": cleaned.get("connectivity") or None,
+            "ownership": cleaned.get("ownership") or None,
+            "installation_date": installed,
+        }
+
+        if dry_run:
+            created += 1
+            continue
+
+        existing = (await db.execute(
+            select(Camera).where(Camera.native_id == native_id)
+        )).scalar_one_or_none()
+
+        if existing:
+            for key, value in fields.items():
+                if value is not None:
+                    setattr(existing, key, value)
+            extra = dict(existing.extra or {})
+            extra["onboarded_via"] = "csv-bulk-import"
+            existing.extra = extra
+            updated += 1
+        else:
+            db.add(Camera(
+                native_id=native_id,
+                status="registered",
+                is_live=bool(fields["rtsp_url"]),
+                extra={"onboarded_via": "csv-bulk-import",
+                       "geo_source": "csv" if lat is not None else "unresolved",
+                       "geo_confidence": 1.0 if lat is not None else 0.0},
+                **fields,
+            ))
+            created += 1
+
+    if not dry_run:
+        await db.commit()
+        await audit.record(
+            db, actor=principal.email, action="bulk_import_cameras",
+            object_type="camera", object_id=f"{created + updated} cameras",
+            purpose="registry-onboarding",
+            details={"created": created, "updated": updated, "errors": len(errors)},
+        )
+
+    return {
+        "dry_run": dry_run,
+        "created": created,
+        "updated": updated,
+        "rejected": len(errors),
+        "errors": errors[:50],
+        "message": (f"Validated {created} rows; {len(errors)} would be rejected"
+                    if dry_run else
+                    f"Onboarded {created} new and updated {updated} cameras"),
+    }
+
+
+@router.get("/bulk-import/template", summary="CSV template for bulk onboarding")
+async def bulk_import_template():
+    """A ready-to-fill CSV with the recognised columns and one worked example."""
+    header = ("native_id,name,department,lat,lon,address,rtsp_url,codec,"
+              "resolution,camera_type,make,model,connectivity,installation_date,"
+              "ownership\n")
+    example = ("GJ-AHM-0001,Nehru Bridge East,Traffic Police,23.0225,72.5714,"
+               "Nehru Bridge Ahmedabad,rtsp://10.0.0.5:554/stream1,h264,"
+               "1920x1080,fixed_dome,Hikvision,DS-2CD2143G0,fibre,2021-03-14,"
+               "Ahmedabad Municipal Corporation\n")
+    return Response(
+        content=header + example,
+        media_type="text/csv",
+        headers={"Content-Disposition":
+                 'attachment; filename="sentinel_camera_onboarding_template.csv"'},
+    )
+
+
+@router.get("/health-status", summary="Camera health and maintenance status")
+async def camera_health(db: AsyncSession = Depends(get_db)):
+    """
+    Per-camera health, as the registry can actually determine it.
+
+    A camera is offline if it has never been contacted, stale if it has not been
+    seen for a day, and operational otherwise. Anything the registry does not
+    know is reported as unknown rather than assumed good.
+    """
+    cameras = (await db.execute(select(Camera))).scalars().all()
+    now = datetime.now(timezone.utc)
+
+    rows = []
+    counts = {"operational": 0, "stale": 0, "offline": 0}
+    for cam in cameras:
+        if cam.last_seen_at is None:
+            state, age_hours = "offline", None
+        else:
+            age_hours = (now - cam.last_seen_at).total_seconds() / 3600
+            state = "operational" if age_hours < 24 else "stale"
+        counts[state] += 1
+
+        age_years = None
+        if cam.installation_date:
+            age_years = round((now - cam.installation_date).days / 365.25, 1)
+
+        rows.append({
+            "native_id": cam.native_id,
+            "name": cam.name,
+            "department": cam.department,
+            "district": (cam.extra or {}).get("district"),
+            "state": state,
+            "last_seen_at": cam.last_seen_at,
+            "hours_since_contact": round(age_hours, 1) if age_hours is not None else None,
+            "codec": cam.codec,
+            "resolution": cam.resolution,
+            "age_years": age_years,
+            "located": cam.lat is not None and cam.lon is not None,
+        })
+
+    rows.sort(key=lambda r: ({"offline": 0, "stale": 1, "operational": 2}[r["state"]],
+                             r["native_id"]))
+    return {
+        "generated_at": now,
+        "totals": {**counts, "cameras": len(cameras)},
+        "cameras": rows,
+    }

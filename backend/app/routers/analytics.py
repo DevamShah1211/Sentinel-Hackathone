@@ -18,7 +18,10 @@ from app.security import (
     CurrentPrincipal, Principal, RequireOperator, RequireStateAdmin,
 )
 from app.models import Alert, AuditLog, Camera, Detection, WatchlistEntry
-from app.reporting import ReportMeta, ReportRow, build_pdf, build_xlsx
+from app.gap_analysis import build_gap_report
+from app.reporting import (
+    ReportMeta, ReportRow, build_gap_xlsx, build_pdf, build_xlsx,
+)
 
 logger = logging.getLogger("sentinel.analytics")
 router = APIRouter()
@@ -295,3 +298,79 @@ async def vehicle_lookup(
         ) if record.is_mock else None,
         "retrieved_at": record.retrieved_at,
     }
+
+
+# ─── Gap analysis — Model 1 deliverable ──────────────────────────────────────
+
+@router.get("/gap-report", summary="Coverage gap and ageing-infrastructure analysis")
+async def gap_report(db: AsyncSession = Depends(get_db)):
+    """
+    Where the estate is thin, and which cameras need attention.
+
+    The problem statement asks for "gap-analysis reports for uncovered zones and
+    ageing infrastructure"; both halves are computed from the registry. See
+    app/gap_analysis.py for how coverage and condition are determined, and what
+    is deliberately reported as unknown rather than assumed healthy.
+    """
+    report = await build_gap_report(db)
+    return {
+        "generated_at": report.generated_at,
+        "summary": {
+            "cameras_total": report.total_cameras,
+            "cameras_located": report.located_cameras,
+            "districts_total": report.districts_total,
+            "districts_covered": report.districts_covered,
+            "districts_uncovered": report.districts_uncovered,
+            "coverage_percent": report.coverage_percent,
+            "ageing_findings": len(report.ageing),
+        },
+        "coverage": [
+            {
+                "district": c.district,
+                "lat": c.lat,
+                "lon": c.lon,
+                "cameras_within_radius": c.cameras_within_radius,
+                "nearest_camera_km": c.nearest_camera_km,
+                "nearest_camera": c.nearest_camera_name,
+                "severity": c.severity,
+            }
+            for c in report.coverage
+        ],
+        "ageing": [
+            {
+                "native_id": f.native_id,
+                "name": f.name,
+                "district": f.district,
+                "issue": f.issue,
+                "detail": f.detail,
+                "severity": f.severity,
+            }
+            for f in report.ageing
+        ],
+    }
+
+
+@router.get("/gap-report/xlsx", summary="Gap-analysis report as XLSX (deliverable)")
+async def gap_report_xlsx(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    principal: Principal = RequireOperator,
+):
+    report = await build_gap_report(db)
+    payload = build_gap_xlsx(report)
+
+    await audit.record(
+        db, actor=principal.email, action="export_gap_report",
+        object_type="report", object_id="gap-analysis-xlsx",
+        purpose="registry-planning", request=request,
+        details={"districts_uncovered": report.districts_uncovered,
+                 "ageing_findings": len(report.ageing)},
+    )
+
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    return StreamingResponse(
+        io.BytesIO(payload),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition":
+                 f'attachment; filename="sentinel_gap_analysis_{stamp}.xlsx"'},
+    )
