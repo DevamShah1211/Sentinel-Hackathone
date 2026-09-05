@@ -70,8 +70,8 @@ demonstration. Submit the output report alongside it.
 | 3 | Map, zoomed to state | Pins across Ahmedabad, Junagadh, Rajkot, Navsari, Kutch | "The catalogue publishes only an id and a name — no coordinates at all. Every location here is derived from the real site name in the entry." |
 | 4 | Map, click a pin | The popup's **Location:** provenance line | "And each camera records how its position was arrived at — hand-verified, geocoded, or a district approximation. We do not invent coordinates; a camera we cannot place is reported as unlocated." |
 | 5 | Map filters | Department and status layers | "Layers by department and status." |
-| 6 | Video wall, 3×3 | Live tiles from the sandbox | "Live viewing, nine cameras at once, played natively through our authenticated proxy — the sandbox credential never reaches the browser." |
-| 7 | Video wall, click a tile | Maximise to 1×1 | "Any tile to full screen." |
+| 6 | Video wall, **2×2** (open it a minute early so tiles are up) | Live tiles from the sandbox | "Live viewing through our own relay. The sandbox's HTTP tier is too slow to play — we measured nine to thirty seconds for a playlist — so we take its RTSP, which is reliable, and re-serve it. The sandbox credential never reaches the browser." |
+| 7 | Video wall, **1×1** | One tile full screen, visibly sharper | "One camera at full quality. Quality follows the layout: fewer tiles, more resolution and frames each." |
 | 8 | Terminal: `anpr_worker.py` running | Status lines, streams alive | "The ANPR indexer runs continuously against the live feeds. It has been running since Thursday, so the index is already built when a registration number arrives." |
 | 9 | Search | Type a plate, results with crops | "Every sighting: camera, department, location, timestamp, confidence, and the evidence crop." |
 | 10 | Search, misspell one character | Fuzzy match still returns the sightings | "ANPR will misread a character. Trigram search recovers it — exact-match-only would fail in front of you on a plate we genuinely detected." |
