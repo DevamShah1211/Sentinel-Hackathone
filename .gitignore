@@ -40,3 +40,4 @@ backend/evidence_crops/
 backend/sample_feeds/
 backend/geocode_cache.json
 backend/logs/
+frontend/shots.mjs
