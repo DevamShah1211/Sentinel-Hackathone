@@ -93,7 +93,7 @@ assistant; they need a human with the accounts.
 
 | # | Task | Who | Notes |
 |---|---|---|---|
-| 1 | **Push to GitHub** | person | `git push origin main` from your own terminal, signed in as `DevamShah1211`. **10 commits are waiting.** The credential cache was cleared, so the sign-in popup will appear. |
+| 1 | **Push to GitHub** | person | `git push origin main` from your own terminal, signed in as `DevamShah1211`. The first ten commits of the day are already on GitHub; only the commits made after 19:45 remain to push. |
 | 2 | **Rotate the sandbox password** | person | `GAQA-H7HN-P2GE` is public in commit `851b572`. Call +91 95370 89982 or write to sentinel.hackathon@gujarat.gov.in. Do this before the repository is reviewed. |
 | 3 | **Record Video 1** (own feed, 2–3 min) | person | Follow `DEMO_SCRIPTS.md`. Seed first with `python tools/seed_demo_route.py --reset`. Six distinct routes; GJ99AB1234 ends with the flagged Rajkot jump. |
 | 4 | **Record Video 2** (government feed) | person | Shot 14 is cam12. Run `python tools/index_partial_reads.py --live 100 --camera cam12` while a truck is in the lane, then search the voted plate with fuzzy on. |
