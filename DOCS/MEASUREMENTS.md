@@ -147,6 +147,18 @@ tried (upscaling to ×5, CLAHE, greyscale normalisation for the yellow commercia
 plate, sharpening, and combinations); **none produced a valid read**, because
 upscaling cannot restore detail the sensor never captured.
 
+### Partial reads — making cam12's truck searchable without lowering the bar
+
+The strict indexer is right to refuse cam12's read for alerting: `66Q2XT449`
+grammar-corrects to `GG02X7449`, a well-formed string with an impossible state
+code, and a watchlist must never fire on that. But an investigator searching
+`GJ02XX4499` wants to know something close was seen at the toll plaza, and to
+look at the crop. `tools/index_partial_reads.py` therefore writes such a track
+as a detection tagged **partial** in its `raw_reads` metadata. The API exposes
+it as `partial: true`, the search page labels it *PARTIAL · UNVERIFIED*, the
+pg_trgm index finds it from the true plate, and the watchlist check skips it.
+Every character stored is the OCR's own; the only decision added is to keep it.
+
 ### What this changes about the conclusion
 
 It sharpens it. The earlier statement — that the limit is camera siting rather

@@ -16,7 +16,7 @@ interface VehicleDetails {
 }
 
 interface Detection {
-    id: string; plate_text: string; confidence: number;
+    id: string; plate_text: string; confidence: number; partial?: boolean;
     detected_at: string; crop_uri?: string;
     camera_name: string; camera_department: string;
     camera_lat?: number; camera_lon?: number; camera_address?: string;
@@ -376,6 +376,12 @@ export default function SearchPage() {
                                 <div className="detection-info">
                                     <div className="detection-plate" style={{ fontFamily: 'var(--font-mono)', fontSize: 20, letterSpacing: 2 }}>
                                         {det.plate_text}
+                                        {det.partial && (
+                                            <span className="badge-pill" title="Detected consistently but the read did not pass full plate validation — verify against the crop before acting on it"
+                                                  style={{ marginLeft: 10, fontSize: 11, letterSpacing: 0.5, verticalAlign: 'middle', background: 'rgba(245,158,11,0.18)', color: '#f59e0b', border: '1px solid rgba(245,158,11,0.45)' }}>
+                                                PARTIAL · UNVERIFIED
+                                            </span>
+                                        )}
                                     </div>
                                     <ConfBar value={det.confidence} />
                                     <div className="detection-meta">

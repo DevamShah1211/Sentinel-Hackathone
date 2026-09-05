@@ -59,6 +59,14 @@ async def snap_to_roads(coordinates: list[list[float]]) -> dict | None:
         return None
 
 
+def _is_partial(raw_reads) -> bool:
+    """A detection is partial when its worker tagged it so in the raw_reads metadata."""
+    for entry in raw_reads or []:
+        if isinstance(entry, dict) and entry.get("_meta") and entry.get("partial"):
+            return True
+    return False
+
+
 class DetectionOut(BaseModel):
     id: UUID
     camera_id: UUID
@@ -71,6 +79,10 @@ class DetectionOut(BaseModel):
     vehicle_type: Optional[str]
     tags: list[str] = []
     notes: Optional[str] = None
+    # True when the read was detected consistently but never passed full grammar
+    # validation (typically too few pixels per character). Searchable for
+    # investigators, shown as unverified, and never used for watchlist alerts.
+    partial: bool = False
     # Joined camera fields
     camera_name: Optional[str] = None
     camera_department: Optional[str] = None
@@ -181,6 +193,7 @@ async def search_detections(
             vehicle_type=det.vehicle_type,
             tags=list(det.tags or []),
             notes=det.notes,
+            partial=_is_partial(det.raw_reads),
             camera_name=row.camera_name,
             camera_department=row.camera_department,
             camera_lat=row.camera_lat,
@@ -354,8 +367,10 @@ async def create_detection(body: DetectionCreate, db: AsyncSession = Depends(get
     db.add(det)
     await db.flush()
     await db.refresh(det)
-    # Check watchlist and fire alert if matched
-    alert_created = await check_and_alert(det, db)
+    # Check watchlist and fire alert if matched. A partial read is a lead for an
+    # investigator, not grounds for an alert — a watchlist must never fire on a
+    # read that failed validation.
+    alert_created = False if _is_partial(raw_reads) else await check_and_alert(det, db)
     await db.commit()
     return {"id": str(det.id), "alert_created": alert_created}
 
