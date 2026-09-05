@@ -16,6 +16,9 @@ if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 from app.database import init_db
+from app.middleware import (
+    RateLimitMiddleware, RequestContextMiddleware, SecurityHeadersMiddleware,
+)
 from app.routers import cameras, detections, watchlist, alerts, auth, analytics, ingest
 from app.websocket_manager import ws_manager
 from app.settings import settings
@@ -37,6 +40,9 @@ async def lifespan(app: FastAPI):
             "AUTH_ENABLED is false — API routes are open. Set AUTH_ENABLED=true "
             "before exposing this instance."
         )
+    # Authenticate the stream proxy now so the first video tile does not wait on
+    # a login round-trip.
+    asyncio.create_task(cameras.warm_hls_session())
     asyncio.create_task(ingest.sync_catalogue_on_startup())
     yield
     logger.info("🛑 Shutting down Sentinel CCTV Platform…")
@@ -58,13 +64,24 @@ app = FastAPI(
     openapi_url="/api/openapi.json",
 )
 
-# ─── CORS ─────────────────────────────────────────────────────────────────────
+# ─── Middleware ───────────────────────────────────────────────────────────────
+# Order matters: the outermost layer runs first on the way in, so request
+# tracing wraps everything, then rate limiting rejects before any work is done.
+app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(RateLimitMiddleware)
+app.add_middleware(RequestContextMiddleware)
+
+# CORS is restricted to the configured origins. A wildcard origin combined with
+# credentials is rejected by browsers anyway, and would be the wrong posture for
+# a console that can query citizen movement history.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=settings.cors_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
+    expose_headers=["X-Request-ID", "Content-Disposition"],
+    max_age=600,
 )
 
 # ─── API Routers ──────────────────────────────────────────────────────────────
@@ -95,9 +112,48 @@ async def alerts_websocket(websocket: WebSocket):
 
 @app.get("/api/health", tags=["Health"])
 async def health():
+    """
+    Component health.
+
+    Reports what is actually reachable rather than returning a constant 'ok' —
+    a health endpoint that cannot fail tells an operator nothing. Degraded means
+    the API is serving but something it depends on is not.
+    """
+    from sqlalchemy import func, select
+
+    from app.database import AsyncSessionLocal
+    from app.models import Camera, Detection
+
+    components: dict[str, dict] = {}
+    healthy = True
+
+    try:
+        async with AsyncSessionLocal() as db:
+            camera_count = await db.scalar(select(func.count(Camera.id)))
+            located = await db.scalar(
+                select(func.count(Camera.id)).where(Camera.lat.isnot(None))
+            )
+            detection_count = await db.scalar(select(func.count(Detection.id)))
+            latest = await db.scalar(select(func.max(Detection.detected_at)))
+        components["database"] = {"status": "ok", "cameras": camera_count,
+                                  "located_cameras": located,
+                                  "detections": detection_count}
+        components["index"] = {
+            "status": "ok",
+            "detections": detection_count,
+            "latest_detection": latest.isoformat() if latest else None,
+        }
+    except Exception as exc:
+        healthy = False
+        components["database"] = {"status": "unavailable", "error": type(exc).__name__}
+
+    components["auth"] = {"status": "ok", "enforced": settings.auth_enabled}
+    components["sandbox"] = {"status": "configured" if settings.sentinel_user_email
+                             else "no-credentials", "host": settings.sentinel_host}
+
     return {
-        "status": "ok",
+        "status": "ok" if healthy else "degraded",
         "service": "sentinel-platform",
         "version": "1.0.0",
-        "sandbox_host": settings.sentinel_host,
+        "components": components,
     }

@@ -185,13 +185,34 @@ function VideoTile({ slot, index, onMaximise, onCameraChange, cameras, isMaximis
             {state !== 'playing' && (
                 <div style={{
                     position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column',
-                    alignItems: 'center', justifyContent: 'center', gap: 6,
-                    background: 'rgba(0,0,0,0.55)', color: 'var(--text-secondary)',
-                    fontSize: 12, pointerEvents: 'none',
+                    alignItems: 'center', justifyContent: 'center', gap: 7,
+                    background: 'rgba(0,0,0,0.6)', color: 'var(--text-secondary)',
+                    fontSize: 12, textAlign: 'center', padding: 12,
                 }}>
-                    {state === 'error'
-                        ? <><VideoOff size={20} /><span>Stream unavailable</span></>
-                        : <span>Connecting…</span>}
+                    {state === 'error' ? (
+                        <>
+                            <VideoOff size={20} aria-hidden="true" />
+                            <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
+                                Stream unavailable
+                            </span>
+                            <span style={{ fontSize: 10.5, color: 'var(--text-muted)', maxWidth: 200 }}>
+                                The upstream gateway is not serving this camera. The registry
+                                and detection index are unaffected.
+                            </span>
+                            <button
+                                className="btn btn-ghost btn-sm"
+                                style={{ marginTop: 2 }}
+                                onClick={() => setReloadKey(k => k + 1)}
+                            >
+                                <RotateCw size={11} aria-hidden="true" /> Retry
+                            </button>
+                        </>
+                    ) : (
+                        <>
+                            <div className="spinner" aria-hidden="true" />
+                            <span>Connecting…</span>
+                        </>
+                    )}
                 </div>
             )}
 

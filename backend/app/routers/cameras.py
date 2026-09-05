@@ -2,12 +2,15 @@
 Cameras router — Model 1 (Registry & GIS) core.
 Provides GeoJSON, paginated list, CRUD, and spatial queries.
 """
+import asyncio
 import logging
 import re
+import time
 from typing import Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import status as http_status
 from pydantic import BaseModel
 from sqlalchemy import func, select, and_, text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -214,25 +217,76 @@ from app.settings import settings
 
 _hls_client: Optional[httpx.AsyncClient] = None
 
+# key -> (fetched_at, body, media_type). Playlists change every few seconds, so a
+# short time-to-live is enough to collapse nine tiles' identical requests.
+_playlist_cache: dict[str, tuple[float, bytes, str]] = {}
+# The sandbox throttles repeated HTTP requests, and nine tiles each re-fetch their
+# playlist every few seconds. A 4 s cache keeps the wall inside that budget while
+# staying well under the 6 s segment duration, so playback is never starved.
+_PLAYLIST_TTL_SECONDS = 4.0
+
+
+# One shared session, established once. Creating it lazily inside the first
+# request made the first tile of the video wall wait ~20 s for a login round-trip,
+# which reads as a broken player; `warm_hls_session()` is called at startup.
+_hls_lock: asyncio.Lock | None = None
+
 
 async def _get_hls_client() -> httpx.AsyncClient:
-    global _hls_client
-    if _hls_client is None or _hls_client.is_closed:
-        _hls_client = httpx.AsyncClient(
-            timeout=10,
-            follow_redirects=True,
-            verify=False,
-            headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
-        )
-        if settings.sentinel_user_email and settings.sentinel_user_password:
-            try:
-                await _hls_client.post(
-                    f"https://{settings.sentinel_cdn_host}/auth/login",
-                    data={"email": settings.sentinel_user_email, "password": settings.sentinel_user_password}
-                )
-            except Exception as e:
-                logger.warning(f"HLS proxy login warning: {e}")
+    global _hls_client, _hls_lock
+    if _hls_lock is None:
+        _hls_lock = asyncio.Lock()
+
+    # Nine tiles start together; without the lock they would each open a client
+    # and log in separately.
+    async with _hls_lock:
+        if _hls_client is None or _hls_client.is_closed:
+            _hls_client = httpx.AsyncClient(
+                timeout=httpx.Timeout(15.0, connect=8.0),
+                follow_redirects=True,
+                # The sandbox presents a certificate that does not validate for
+                # this host. Verification is disabled only for this upstream hop,
+                # never for anything the platform itself serves.
+                verify=False,
+                limits=httpx.Limits(max_connections=32, max_keepalive_connections=16),
+                # The sandbox CDN rejects non-browser user agents with 403, so
+                # this must stay a browser string — a plain client name breaks
+                # every stream.
+                headers={
+                    "User-Agent": (
+                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                        "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                    ),
+                    "Referer": f"https://{settings.sentinel_cdn_host}/",
+                },
+            )
+            if settings.sentinel_user_email and settings.sentinel_user_password:
+                try:
+                    await _hls_client.post(
+                        f"https://{settings.sentinel_cdn_host}/auth/login",
+                        data={"email": settings.sentinel_user_email,
+                              "password": settings.sentinel_user_password},
+                    )
+                    logger.info("HLS proxy session established")
+                except httpx.HTTPError as exc:
+                    logger.warning("HLS proxy login failed: %s", exc)
     return _hls_client
+
+
+async def _reset_hls_client() -> None:
+    """Drop the current session so the next call authenticates afresh."""
+    global _hls_client
+    if _hls_client is not None and not _hls_client.is_closed:
+        await _hls_client.aclose()
+    _hls_client = None
+
+
+async def warm_hls_session() -> None:
+    """Authenticate the stream proxy at startup so the first tile plays promptly."""
+    try:
+        await _get_hls_client()
+    except Exception as exc:
+        logger.warning("Could not warm the HLS session: %s", exc)
 
 
 @router.get("/proxy-hls/{native_id}/{file_name}", summary="Proxy authenticated HLS stream segments")
@@ -254,6 +308,19 @@ async def proxy_hls_stream(native_id: str, file_name: str):
     if "/" in file_name or "\\" in file_name or ".." in file_name:
         raise HTTPException(400, "Invalid stream file name")
 
+    # Playlists and the shared key are requested repeatedly by every open tile.
+    # A short cache collapses nine identical fetches into one without making the
+    # stream noticeably staler — segments themselves are never cached, since they
+    # are large and each is fetched once.
+    cache_key = f"{native_id}/{file_name}"
+    cacheable = file_name.endswith((".m3u8", ".key"))
+    if cacheable:
+        cached = _playlist_cache.get(cache_key)
+        if cached and (time.monotonic() - cached[0]) < _PLAYLIST_TTL_SECONDS:
+            return Response(content=cached[1], media_type=cached[2],
+                            headers={"Cache-Control": "no-store",
+                                     "X-Sentinel-Cache": "hit"})
+
     client = await _get_hls_client()
     # The sandbox publishes playlists at /<camera>/index.m3u8 and the shared
     # AES-128 decryption key at the host root. Older gateway builds used
@@ -266,20 +333,41 @@ async def proxy_hls_stream(native_id: str, file_name: str):
 
     try:
         resp = None
-        for target_url in candidates:
+        target_url = candidates[0]
+        for index, target_url in enumerate(candidates):
             resp = await client.get(target_url)
             if resp.status_code == 200:
                 break
+            # A 403 is the gateway refusing the session, not a wrong path — trying
+            # the remaining paths would only add seconds to a request that is
+            # already going to fail, and a slow failure looks worse in a video
+            # wall than a fast one.
+            if resp.status_code == 403 and index == 0:
+                break
+
+        # 401/403 means the session lapsed. Re-authenticate once and retry the
+        # path that was being tried; the sandbox also throttles, in which case
+        # this retry legitimately fails and the caller is told plainly.
         if resp is not None and resp.status_code in (401, 403):
-            # Session expired — re-authenticate once and retry.
-            await client.post(
-                f"https://{settings.sentinel_cdn_host}/auth/login",
-                data={"email": settings.sentinel_user_email,
-                      "password": settings.sentinel_user_password},
-            )
+            logger.info("HLS session rejected (%s) — re-authenticating", resp.status_code)
+            await _reset_hls_client()
+            client = await _get_hls_client()
             resp = await client.get(target_url)
     except httpx.HTTPError as exc:
-        raise HTTPException(502, f"HLS proxy error: {exc}") from exc
+        logger.warning("HLS upstream error for %s: %s", cache_key, exc)
+        raise HTTPException(
+            http_status.HTTP_502_BAD_GATEWAY,
+            "Upstream stream gateway is unreachable. Live viewing is temporarily "
+            "unavailable; the camera registry and detection index are unaffected.",
+        ) from exc
+
+    if resp is None or resp.status_code >= 400:
+        code = resp.status_code if resp is not None else "no response"
+        logger.warning("HLS upstream refused %s (%s)", cache_key, code)
+        raise HTTPException(
+            http_status.HTTP_502_BAD_GATEWAY,
+            f"Upstream stream gateway returned {code} for this camera.",
+        )
 
     if file_name.endswith(".m3u8"):
         base = f"/api/v1/cameras/proxy-hls/{native_id}/"
