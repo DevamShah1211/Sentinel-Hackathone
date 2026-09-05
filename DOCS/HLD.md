@@ -459,7 +459,34 @@ similar registration, and both are operationally useful.
 
 This section is a design argument. It is not implemented, and we do not claim it is.
 
-### 9.1 Why flat central ingestion fails
+### 9.0 We measured the failure mode, at small scale, on this sandbox
+
+Before the arithmetic, a piece of direct evidence. Opening N concurrent RTSP
+connections to the sandbox gateway from one machine:
+
+| Concurrent | Succeeded | Wall time | Our CPU (of 20 cores) |
+|---|---|---|---|
+| 2 | 2 / 2 | 12 s | 4% |
+| 4 | 4 / 4 | 36 s | 4% |
+| 8 | 6 / 8 | 102 s | 4% |
+
+Accept times at eight connections: 4 s, 8 s, 21 s, 28 s, 57 s, 61 s, 65 s, 72 s.
+
+**Our machine sat at 4% CPU throughout.** Nothing on the consuming side was
+saturated. The gateway accepts connections close to serially, and the wait grows
+with the queue depth.
+
+This is the 80,000-camera problem reproduced at a scale of eight. The constraint
+is never the compute — our own figures give 26 concurrent ANPR streams per
+machine and 4% CPU while relaying video — it is the **single shared ingress**. A
+statewide programme that routes cameras through one aggregation point meets this
+wall early and cannot buy its way past it with faster servers.
+
+So the honest reading of a video wall that struggles at nine sandbox cameras is
+not "this platform does not scale". It is "this platform is demonstrating, on a
+shared demonstration endpoint, the exact bottleneck that makes edge-first
+architecture mandatory". Section 9.2 is the design that follows from it, and
+§9.3 sets out what a real deployment does differently.
 
 From Tech Doc §4.9.1, at an assumed H.265 camera mix:
 
@@ -491,6 +518,30 @@ Edge nodes record and analyse locally; only metadata, alerts and specifically
 requested clips traverse the backbone. This reduces the wide-area requirement by
 **two to three orders of magnitude**, because a plate read is a few hundred bytes
 where the video that produced it is megabytes per second.
+
+### 9.2a Why 80,000 cameras is a different problem, not a bigger one
+
+The sandbox has every camera behind one endpoint. No deployment would, and the
+difference is not incremental:
+
+| | Sandbox (demonstration) | Statewide deployment |
+|---|---|---|
+| Cameras per ingest point | 30, all through one gateway | 50–200 per district edge node |
+| Who consumes a stream | Every team, over the internet | One edge node, on the local network |
+| Path from camera | Camera → shared gateway → internet → us | Camera → edge node in the same district |
+| Concurrent connections per gateway | Everyone's, simultaneously | Only its own node's |
+| What crosses the WAN | Full video, to every viewer | Metadata, alerts, requested clips |
+
+A camera in Junagadh does not stream to Gandhinagar so an operator can watch it.
+It streams to a Junagadh edge node, which records and analyses locally, and sends
+upstream only what someone asked for. Eighty thousand cameras across roughly 400
+edge nodes is 200 cameras per node — a load an ordinary server handles, and the
+figure our own measurements support.
+
+What we demonstrate on the sandbox is therefore the *analytics and correlation*
+layer, which is the part that generalises. The ingest layer we demonstrate
+against a shared endpoint we do not control, and we say so rather than presenting
+its ceiling as ours.
 
 ### 9.3 What changes, and at what threshold
 

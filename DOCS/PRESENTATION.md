@@ -250,6 +250,23 @@ a claimed live integration would not.
 
 ## Slide 9 — Scaling to 80,000 cameras
 
+**We reproduced the 80,000-camera bottleneck at a scale of eight**
+
+Opening N concurrent RTSP connections to the sandbox gateway:
+
+| Concurrent | Succeeded | Wall time | **Our CPU** (20 cores) |
+|---|---|---|---|
+| 2 | 2 / 2 | 12 s | **4%** |
+| 4 | 4 / 4 | 36 s | **4%** |
+| 8 | 6 / 8 | 102 s | **4%** |
+
+Accept times at eight: 4s · 8s · 21s · 28s · 57s · 61s · 65s · 72s — a queue.
+
+> **Our machine was idle at 4% CPU while the gateway took over a minute to accept
+> a connection.** The limit is the single shared ingress, not compute. That is the
+> 80,000-camera problem in miniature, and no amount of faster hardware on our side
+> moves it.
+
 **Flat central ingestion does not work, and here is the arithmetic**
 
 | Quantity | Value |
@@ -279,8 +296,26 @@ wide-area requirement by **two to three orders of magnitude**.
 partitions, storage rebuild times, and scatter-gather cross-region route queries.
 Each needs load-testing before any statewide commitment.
 
-**Speaker note:** "A measured benchmark of 26 streams with a transparent projection
-is worth more than an unsupported claim of 80,000." Say it.
+**Why the sandbox ceiling is not our ceiling**
+
+| | Sandbox | Statewide deployment |
+|---|---|---|
+| Cameras per ingest point | 30, one shared gateway | 50–200 per district edge node |
+| Who consumes a stream | Every competing team, over the internet | One edge node, on the local network |
+| Across the WAN | Full video to every viewer | Metadata, alerts, requested clips |
+
+80,000 cameras over ~400 edge nodes is **200 per node** — ordinary server load,
+and consistent with our measured 26 concurrent ANPR streams per machine.
+
+**Speaker notes:** If asked "your wall struggles at nine cameras, how will you do
+80,000?" — go straight to the 4% CPU figure. The answer is: *the sandbox is one
+shared gateway serving every team; no deployment looks like that, and our
+measurements show the compute side has enormous headroom while the shared ingress
+is what fails first. That is precisely why the architecture is edge-first — we are
+watching the argument prove itself at a scale of eight.*
+
+Then: "A measured benchmark of 26 streams with a transparent projection is worth
+more than an unsupported claim of 80,000." 
 
 ---
 

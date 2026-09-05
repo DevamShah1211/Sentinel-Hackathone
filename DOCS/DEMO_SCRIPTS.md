@@ -80,6 +80,22 @@ demonstration. Submit the output report alongside it.
 | 13 | Terminal: `analytics/audit` | Audit rows with actor, purpose, case reference | "Every search, route and export is recorded with who ran it and why. Surveillance capability with accountability attached." |
 | 14 | Slide or terminal | The yield table from `DOCS/MEASUREMENTS.md` §2a | **Say this plainly:** "One honest finding. On this grid our pipeline reads no valid plates. The detector proposed 165 plate-shaped regions and the OCR returned 87 strings — every one was roadside signage, and our Indian-plate validator rejected all of them. These are wide-area night PTZ overviews where a plate is five to fifteen pixels. The same pipeline recovers six of six on footage where plates are legible. The limit is camera siting, not the software — and that is a finding worth reporting to the department." |
 
+### Optional shot 15 — the scalability question, answered before it is asked
+
+If the video has room, this is worth thirty seconds. Show the concurrency table
+from `MEASUREMENTS.md` §5a and say:
+
+> "One more honest measurement. When we open eight camera connections at once,
+> the sandbox gateway takes seventy seconds to accept the eighth — while our
+> machine sits at four percent CPU. The limit is the shared gateway, not our
+> software. That is the eighty-thousand-camera problem at a scale of eight, and
+> it is exactly why our architecture is edge-first: a camera in Junagadh streams
+> to a Junagadh edge node, not across the state. Four hundred nodes at two
+> hundred cameras each is ordinary server load."
+
+Getting there first turns the obvious objection into a demonstration that you
+understand the real constraint.
+
 ### Why shot 14 matters
 
 An evaluator will test ANPR on the sandbox and see nothing. Getting there first,

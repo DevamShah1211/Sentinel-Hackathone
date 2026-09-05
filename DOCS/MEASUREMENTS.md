@@ -153,6 +153,52 @@ Measured while indexing live feeds:
   OpenCV's FFmpeg backend; RTSP on port 8554 is the working ingest path from this
   network.
 
+## 5a. Where the concurrency limit actually is
+
+The question a scalability reviewer will ask is whether a wall that struggles at
+nine cameras can possibly be a path to eighty thousand. The answer depends
+entirely on *which side* the limit sits on, so we measured it rather than
+asserting it.
+
+N concurrent RTSP connections opened simultaneously from one machine, recording
+how long the gateway took to accept each and deliver a first frame:
+
+| Concurrent connections | Succeeded | Wall time | Our CPU (mean / peak of 20 cores) |
+|---|---|---|---|
+| 2 | **2 / 2** | 12 s | 4% / 6% |
+| 4 | **4 / 4** | 36 s | 4% / 12% |
+| 8 | 6 / 8 | 102 s | 4% / 11% |
+
+Per-connection accept times at N=8: 4.3 s, 8.2 s, 20.6 s, 28.4 s, 57.4 s, 61.3 s,
+65.2 s, 71.7 s — a queue, not a load curve.
+
+**Our machine is idle at 4% CPU while connections take over a minute to be
+accepted.** Nothing on this side is saturated: not CPU, not memory, not the
+decoder, not the network. The sandbox gateway accepts connections roughly
+serially, and the accept time grows linearly with how many are waiting.
+
+This matters for the scale argument in two ways.
+
+**First, the demonstrated limit is not ours to fix and not the one that scales.**
+A shared sandbox serving every competing team from one endpoint is a
+demonstration environment, not a deployment topology. Its concurrency ceiling
+says nothing about a statewide design, because no statewide design routes 80,000
+cameras through one gateway — which is precisely the argument of §9 in the HLD,
+and the reason edge-first is the only viable topology.
+
+**Second, it is a live illustration of that argument.** We are watching, at a
+scale of eight cameras, exactly the failure mode the arithmetic predicts at
+80,000: a single aggregation point becomes the constraint long before compute
+does. Our own numbers show the compute side has enormous headroom — 26 concurrent
+ANPR streams per machine (§1), 4% CPU while relaying video — and the thing that
+breaks first is the shared ingress. That is the case for district edge nodes,
+made with evidence rather than a diagram.
+
+The platform responds to this the way a deployed system should: connections are
+staggered rather than opened in a burst, one upstream connection per camera is
+shared by all viewers, idle relays release their connection, and a tile that
+cannot be served says so plainly instead of hanging.
+
 ## 6. Camera registry
 
 The sandbox catalogue (`/cameras.json`, behind a form login) publishes **only
