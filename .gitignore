@@ -34,3 +34,8 @@ Thumbs.db
 *.log
 .cache/
 .pytest_cache/
+
+# Local runtime artefacts
+backend/evidence_crops/
+backend/sample_feeds/
+backend/geocode_cache.json

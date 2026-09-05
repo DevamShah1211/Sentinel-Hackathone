@@ -1,244 +1,197 @@
 """
-Ingest router — syncs camera catalogue from the Sentinel sandbox.
-GET /api/ingest  →  camera list injested into the cameras table.
+Ingest router — onboards cameras from the Sentinel sandbox catalogue.
+
+The catalogue is the contract (playbook, sandbox rule 1): camera ids and the camera
+set can change, so nothing here is hardcoded. What the sandbox actually returns is
+only `{id, name}` per camera — no coordinates, no department, no codec — so every
+location is derived by `app.geocoding`, which records how it was derived and never
+invents a position it cannot justify.
 """
+from __future__ import annotations
+
 import asyncio
 import logging
 from datetime import datetime, timezone
-from typing import Optional
+from urllib.parse import quote
 
 import httpx
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
-from sqlalchemy import select, update
+from fastapi import APIRouter, BackgroundTasks, Depends, Query
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.dialects.postgresql import insert as pg_insert
 
-from app.database import get_db, AsyncSessionLocal
+from app.database import AsyncSessionLocal, get_db
+from app.geocoding import (
+    GeocodeCache,
+    NOMINATIM_UA,
+    infer_department,
+    resolve_location,
+)
 from app.models import Camera
+from app.sandbox_client import fetch_catalogue
 from app.settings import settings
-
-from urllib.parse import quote
 
 logger = logging.getLogger("sentinel.ingest")
 router = APIRouter()
 
 
-def _build_camera_from_catalogue(item: dict) -> dict:
-    """Transform a single catalogue entry into our camera model dict."""
-    native_id = str(item.get("id", ""))
-    
-    # Auth credentials formatting per Playbook: email @ must be %40
+def _stream_urls(native_id: str) -> dict[str, str]:
+    """
+    Build the three stream URLs for a camera.
+
+    The sandbox is credentialled: RTSP and WHEP carry basic-auth in the URL (the
+    email's '@' must be percent-encoded), while HLS is served from the CDN host.
+    """
     email = settings.sentinel_user_email
     password = settings.sentinel_user_password
-    if email and password:
-        encoded_email = quote(email, safe='').replace('@', '%40')
-        auth_prefix = f"{encoded_email}:{password}@"
-    else:
-        auth_prefix = ""
-
-    ip_host = settings.sentinel_ip
-    cdn_host = settings.sentinel_cdn_host
-
-    default_rtsp = f"rtsp://{auth_prefix}{ip_host}:{settings.sentinel_rtsp_port}/stream/{native_id}"
-    default_hls  = f"https://{cdn_host}/{native_id}/index.m3u8"
-    default_whep = f"http://{auth_prefix}{ip_host}:{settings.sentinel_whep_port}/stream/{native_id}/whep"
+    auth = f"{quote(email, safe='')}:{quote(password, safe='')}@" if email and password else ""
 
     return {
-        "native_id":  native_id,
-        "name":       item.get("name") or item.get("location") or f"Camera {native_id}",
-        "department": item.get("department") or item.get("dept") or "Unknown",
-        "lat":        item.get("lat") or item.get("latitude"),
-        "lon":        item.get("lon") or item.get("longitude") or item.get("lng"),
-        "address":    item.get("location") or item.get("address"),
-        "rtsp_url":   item.get("rtsp_url") or default_rtsp,
-        "hls_url":    item.get("hls_url") or default_hls,
-        "whep_url":   item.get("whep_url") or default_whep,
-        "codec":      item.get("codec") or "h264",
+        "rtsp_url": f"rtsp://{auth}{settings.sentinel_ip}:{settings.sentinel_rtsp_port}/stream/{native_id}",
+        "hls_url": f"https://{settings.sentinel_cdn_host}/{native_id}/index.m3u8",
+        "whep_url": f"http://{auth}{settings.sentinel_ip}:{settings.sentinel_whep_port}/stream/{native_id}/whep",
+    }
+
+
+def build_camera_row(item: dict, cache: GeocodeCache | None = None,
+                     client: httpx.Client | None = None,
+                     use_network: bool = True) -> dict | None:
+    """Transform one catalogue entry into a `cameras` row."""
+    native_id = str(item.get("id") or "").strip()
+    if not native_id:
+        return None
+
+    name = item.get("name") or f"Camera {native_id}"
+    geo = resolve_location(native_id, name, cache=cache, client=client, use_network=use_network)
+
+    # The catalogue may one day carry these directly; prefer them when present.
+    lat = item.get("lat") or item.get("latitude") or geo.lat
+    lon = item.get("lon") or item.get("longitude") or item.get("lng") or geo.lon
+
+    row = {
+        "native_id": native_id,
+        "name": name,
+        "department": item.get("department") or item.get("dept") or infer_department(name),
+        "lat": lat,
+        "lon": lon,
+        "address": item.get("address") or geo.address,
+        "codec": item.get("codec"),
         "resolution": item.get("resolution"),
-        "fps":        item.get("fps"),
+        "fps": item.get("fps"),
         "bitrate_kbps": item.get("bitrate_kbps") or item.get("bitrate"),
-        "status":     "operational" if item.get("live", True) else "unknown",
-        "is_live":    bool(item.get("live", True)),
-        "camera_type": item.get("type") or "fixed_dome",
-        "extra":      {k: v for k, v in item.items()
-                       if k not in ("id", "name", "location", "department", "lat", "lon",
-                                   "rtsp_url", "hls_url", "whep_url", "codec", "resolution",
-                                   "fps", "bitrate_kbps", "live", "type")},
+        "status": "operational" if item.get("live", True) else "unknown",
+        "is_live": bool(item.get("live", True)),
+        "camera_type": item.get("type") or "fixed",
+        # Provenance travels with the record so the UI and the HLD can state how
+        # each location was arrived at rather than implying survey accuracy.
+        "extra": {
+            "geo_source": geo.source,
+            "geo_confidence": geo.confidence,
+            "district": geo.district,
+            "department_inferred": not (item.get("department") or item.get("dept")),
+            "catalogue_fields": sorted(item.keys()),
+        },
     }
+    row.update(_stream_urls(native_id))
+    return row
 
 
-# Known location coordinate & department mappings for Sentinel cameras in Gujarat
-LOCATION_PRESETS = {
-    "cam01": {"lat": 23.0784, "lon": 72.5976, "department": "Traffic Police", "address": "Chimanbhai Patel Bridge, Subhash Bridge, Ahmedabad"},
-    "cam02": {"lat": 23.0298, "lon": 72.5648, "department": "City Surveillance", "address": "Janpath, Ashram Road, Ahmedabad"},
-    "cam03": {"lat": 23.0975, "lon": 72.5902, "department": "Smart City Mission", "address": "ONGC Office Junction, Chandkheda, Ahmedabad"},
-    "cam04": {"lat": 23.0125, "lon": 72.5641, "department": "Traffic Police", "address": "Paldi Cross Road, Paldi, Ahmedabad"},
-    "cam05": {"lat": 23.1065, "lon": 72.5947, "department": "National Highway Authority", "address": "Visat Three Roads, Sabarmati, Ahmedabad"},
-    "cam06": {"lat": 21.5222, "lon": 70.4579, "department": "District Police", "address": "Timbavadi Gate, Junagadh"},
-    "cam07": {"lat": 22.3072, "lon": 73.1812, "department": "City Surveillance", "address": "Hero Showroom Junction, Vadodara"},
-    "cam08": {"lat": 21.1702, "lon": 72.8311, "department": "Traffic Police", "address": "Ring Road Junction, Surat"},
-    "cam09": {"lat": 22.4707, "lon": 70.0577, "department": "Port & Highway Security", "address": "Bedi Gateway, Jamnagar"},
-    "cam10": {"lat": 21.7645, "lon": 72.1519, "department": "Coastal Police", "address": "Bhavnagar Circle, Bhavnagar"},
-}
+async def upsert_cameras(cameras_data: list[dict], db: AsyncSession,
+                         use_network: bool = True) -> dict:
+    """Insert or update camera records, keyed on native_id."""
+    cache = GeocodeCache()
+    inserted = updated = skipped = unlocated = 0
 
+    with httpx.Client(timeout=20.0, headers={"User-Agent": NOMINATIM_UA}) as client:
+        for item in cameras_data:
+            row = build_camera_row(item, cache=cache, client=client, use_network=use_network)
+            if row is None:
+                skipped += 1
+                continue
+            if row["lat"] is None or row["lon"] is None:
+                unlocated += 1
 
-def _build_camera_from_catalogue(item: dict) -> dict:
-    """Transform a single catalogue entry into our camera model dict."""
-    native_id = str(item.get("id", ""))
-    
-    # Auth credentials formatting per Playbook: email @ must be %40
-    email = settings.sentinel_user_email
-    password = settings.sentinel_user_password
-    if email and password:
-        encoded_email = quote(email, safe='').replace('@', '%40')
-        auth_prefix = f"{encoded_email}:{password}@"
-    else:
-        auth_prefix = ""
+            existing = (
+                await db.execute(select(Camera).where(Camera.native_id == row["native_id"]))
+            ).scalar_one_or_none()
 
-    ip_host = settings.sentinel_ip
-    cdn_host = settings.sentinel_cdn_host
+            if existing:
+                for key, value in row.items():
+                    # Never overwrite a known value with a null.
+                    if value is not None:
+                        setattr(existing, key, value)
+                existing.last_seen_at = datetime.now(timezone.utc)
+                updated += 1
+            else:
+                db.add(Camera(**row, last_seen_at=datetime.now(timezone.utc)))
+                inserted += 1
 
-    default_rtsp = f"rtsp://{auth_prefix}{ip_host}:{settings.sentinel_rtsp_port}/stream/{native_id}"
-    default_hls  = f"https://{cdn_host}/{native_id}/index.m3u8"
-    default_whep = f"http://{auth_prefix}{ip_host}:{settings.sentinel_whep_port}/stream/{native_id}/whep"
-
-    # Presets for coordinates if missing in catalogue response
-    preset = LOCATION_PRESETS.get(native_id, {})
-    
-    # Fallback coordinate calculation if not in preset
-    cam_num = int(native_id.replace("cam", "")) if native_id.startswith("cam") and native_id[3:].isdigit() else 1
-    fallback_lat = preset.get("lat") or item.get("lat") or item.get("latitude") or (23.0225 + (cam_num * 0.008))
-    fallback_lon = preset.get("lon") or item.get("lon") or item.get("longitude") or item.get("lng") or (72.5714 + ((cam_num % 5) * 0.012))
-
-    return {
-        "native_id":  native_id,
-        "name":       item.get("name") or item.get("location") or f"Camera {native_id}",
-        "department": item.get("department") or item.get("dept") or preset.get("department") or "Traffic Police",
-        "lat":        fallback_lat,
-        "lon":        fallback_lon,
-        "address":    item.get("location") or item.get("address") or preset.get("address") or f"Junction {native_id}, Gujarat",
-        "rtsp_url":   item.get("rtsp_url") or default_rtsp,
-        "hls_url":    item.get("hls_url") or default_hls,
-        "whep_url":   item.get("whep_url") or default_whep,
-        "codec":      item.get("codec") or "h264",
-        "resolution": item.get("resolution") or "1920x1080",
-        "fps":        item.get("fps") or 25.0,
-        "bitrate_kbps": item.get("bitrate_kbps") or item.get("bitrate") or 2048,
-        "status":     "operational" if item.get("live", True) else "unknown",
-        "is_live":    bool(item.get("live", True)),
-        "camera_type": item.get("type") or "fixed_dome",
-        "extra":      {k: v for k, v in item.items()
-                       if k not in ("id", "name", "location", "department", "lat", "lon",
-                                   "rtsp_url", "hls_url", "whep_url", "codec", "resolution",
-                                   "fps", "bitrate_kbps", "live", "type")},
-    }
-
-
-async def fetch_catalogue() -> list[dict]:
-    """Pull the camera catalogue from the Sentinel sandbox API after authenticating."""
-    email = settings.sentinel_user_email
-    password = settings.sentinel_user_password
-
-    async with httpx.AsyncClient(timeout=15, follow_redirects=True, verify=False) as client:
-        # Step 1: Login if credentials are set
-        if email and password:
-            try:
-                login_url = f"https://{settings.sentinel_cdn_host}/auth/login"
-                logger.info(f"Logging into Sentinel portal: {login_url}")
-                await client.post(login_url, data={"email": email, "password": password})
-            except Exception as exc:
-                logger.warning(f"Sentinel portal login attempt failed: {exc}")
-
-        # Step 2: Request cameras.json and API ingest endpoints
-        urls = [
-            f"https://{settings.sentinel_cdn_host}/cameras.json",
-            f"http://{settings.sentinel_host}/api/ingest",
-            f"https://{settings.sentinel_cdn_host}/api/ingest",
-        ]
-        for url in urls:
-            try:
-                resp = await client.get(url)
-                resp.raise_for_status()
-                data = resp.json()
-                if isinstance(data, list):
-                    logger.info(f"Successfully fetched {len(data)} cameras from {url}")
-                    return data
-                cam_list = data.get("cameras") or data.get("data") or []
-                if cam_list:
-                    logger.info(f"Successfully fetched {len(cam_list)} cameras from {url}")
-                    return cam_list
-            except Exception as exc:
-                logger.debug(f"Catalogue fetch attempt failed for ({url}): {exc}")
-
-    logger.warning("Could not reach sandbox catalogue endpoints.")
-    return []
-
-
-async def upsert_cameras(cameras_data: list[dict], db: AsyncSession) -> int:
-    """Upsert camera records — insert or update based on native_id."""
-    count = 0
-    for item in cameras_data:
-        row = _build_camera_from_catalogue(item)
-        if not row["native_id"]:
-            continue
-        # Check if exists
-        result = await db.execute(select(Camera).where(Camera.native_id == row["native_id"]))
-        existing = result.scalar_one_or_none()
-        if existing:
-            for k, v in row.items():
-                if v is not None:
-                    setattr(existing, k, v)
-            existing.last_seen_at = datetime.now(timezone.utc)
-        else:
-            cam = Camera(**row, last_seen_at=datetime.now(timezone.utc))
-            db.add(cam)
-        count += 1
     await db.commit()
-    return count
+    result = {"inserted": inserted, "updated": updated,
+              "skipped": skipped, "unlocated": unlocated,
+              "total": inserted + updated}
+    logger.info("Camera sync: %s", result)
+    return result
 
 
-async def sync_catalogue_on_startup():
-    """Called once on app startup to populate the cameras table."""
-    await asyncio.sleep(2)  # Let DB init settle
+async def sync_catalogue_on_startup() -> None:
+    """Populate the camera registry once at application startup."""
+    await asyncio.sleep(2)  # let the database initialise
     logger.info("Fetching Sentinel sandbox catalogue…")
-    cameras_data = await fetch_catalogue()
-    if cameras_data:
-        async with AsyncSessionLocal() as db:
-            count = await upsert_cameras(cameras_data, db)
-        logger.info(f"Synced {count} cameras from sandbox catalogue.")
-    else:
-        logger.warning("No cameras returned from catalogue; using existing DB data.")
+    try:
+        cameras_data = await fetch_catalogue()
+    except Exception as exc:  # never let ingest failure stop the API booting
+        logger.warning("Catalogue fetch raised %s: %s", type(exc).__name__, exc)
+        return
 
+    if not cameras_data:
+        logger.warning("No cameras returned from catalogue; keeping existing registry")
+        return
 
-# ─── Router endpoints ─────────────────────────────────────────────────────────
-
-@router.post("/sync", summary="Manually trigger catalogue sync from Sentinel sandbox")
-async def sync_catalogue(background_tasks: BackgroundTasks, db: AsyncSession = Depends(get_db)):
-    background_tasks.add_task(_sync_task)
-    return {"message": "Catalogue sync started in background."}
-
-
-async def _sync_task():
-    cameras_data = await fetch_catalogue()
     async with AsyncSessionLocal() as db:
-        count = await upsert_cameras(cameras_data, db)
-    logger.info(f"Manual sync: {count} cameras upserted.")
+        # Geocoding is rate-limited to 1 req/s; on startup rely on the cache only
+        # so boot is not delayed. Use POST /api/v1/ingest/sync to refresh locations.
+        await upsert_cameras(cameras_data, db, use_network=False)
 
 
-@router.get("/catalogue", summary="Fetch raw catalogue from Sentinel sandbox")
+# ─── Endpoints ────────────────────────────────────────────────────────────────
+
+@router.post("/sync", summary="Re-sync the camera registry from the sandbox catalogue")
+async def sync_catalogue(background_tasks: BackgroundTasks,
+                         geocode: bool = Query(True, description="Resolve missing locations via Nominatim")):
+    background_tasks.add_task(_sync_task, geocode)
+    return {"message": "Catalogue sync started in the background.",
+            "geocoding_enabled": geocode}
+
+
+async def _sync_task(geocode: bool = True) -> None:
+    cameras_data = await fetch_catalogue()
+    if not cameras_data:
+        logger.warning("Manual sync: catalogue unreachable")
+        return
+    async with AsyncSessionLocal() as db:
+        await upsert_cameras(cameras_data, db, use_network=geocode)
+
+
+@router.get("/catalogue", summary="Raw catalogue as published by the sandbox")
 async def get_raw_catalogue():
     data = await fetch_catalogue()
     return {"count": len(data), "cameras": data}
 
 
-@router.get("/status", summary="Ingest pipeline status")
+@router.get("/status", summary="Ingest and registry status")
 async def ingest_status(db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Camera))
-    cams = result.scalars().all()
-    live = sum(1 for c in cams if c.is_live)
+    cameras = (await db.execute(select(Camera))).scalars().all()
+    located = sum(1 for c in cameras if c.lat is not None and c.lon is not None)
+    by_source: dict[str, int] = {}
+    for cam in cameras:
+        source = (cam.extra or {}).get("geo_source", "unknown")
+        by_source[source] = by_source.get(source, 0) + 1
+
     return {
-        "total_cameras": len(cams),
-        "live_cameras": live,
-        "offline_cameras": len(cams) - live,
+        "total_cameras": len(cameras),
+        "live_cameras": sum(1 for c in cameras if c.is_live),
+        "located_cameras": located,
+        "unlocated_cameras": len(cameras) - located,
+        "location_provenance": by_source,
         "sandbox_host": settings.sentinel_host,
     }

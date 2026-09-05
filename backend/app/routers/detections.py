@@ -8,7 +8,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import func, select, text, and_, desc
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -42,7 +42,14 @@ class DetectionOut(BaseModel):
 
 
 class DetectionCreate(BaseModel):
-    camera_id: UUID
+    """
+    Payload written by the ANPR worker.
+
+    `camera_id` may be omitted when `camera_native_id` is supplied, so the worker
+    can post using the sandbox's own camera id without first resolving our UUID.
+    """
+    camera_id: Optional[UUID] = None
+    camera_native_id: Optional[str] = None
     plate_text: str
     confidence: float = 0.0
     pts_ms: Optional[int] = None
@@ -51,6 +58,8 @@ class DetectionCreate(BaseModel):
     vehicle_type: Optional[str] = None
     raw_reads: list[dict] = []
     bbox: Optional[dict] = None
+    plate_format: Optional[str] = None
+    grammar_corrections: int = 0
 
 
 @router.get("", response_model=list[DetectionOut], summary="Search detections by plate / time / camera")
@@ -208,15 +217,36 @@ async def plate_route(
 @router.post("", response_model=dict, summary="Ingest a new detection (called by ANPR worker)")
 async def create_detection(body: DetectionCreate, db: AsyncSession = Depends(get_db)):
     from app.routers.watchlist import check_and_alert
+
+    camera_id = body.camera_id
+    if camera_id is None:
+        if not body.camera_native_id:
+            raise HTTPException(422, "Either camera_id or camera_native_id is required")
+        camera_id = await db.scalar(
+            select(Camera.id).where(Camera.native_id == body.camera_native_id)
+        )
+        if camera_id is None:
+            raise HTTPException(404, f"Unknown camera '{body.camera_native_id}'")
+
+    # Grammar metadata rides along in raw_reads so the report can state how many
+    # plates needed correcting without widening the table.
+    raw_reads = list(body.raw_reads)
+    if body.plate_format or body.grammar_corrections:
+        raw_reads.append({
+            "_meta": True,
+            "plate_format": body.plate_format,
+            "grammar_corrections": body.grammar_corrections,
+        })
+
     det = Detection(
-        camera_id=body.camera_id,
+        camera_id=camera_id,
         plate_text=body.plate_text.upper().strip(),
         confidence=body.confidence,
         pts_ms=body.pts_ms,
         track_id=body.track_id,
         crop_uri=body.crop_uri,
         vehicle_type=body.vehicle_type,
-        raw_reads=body.raw_reads,
+        raw_reads=raw_reads,
         bbox=body.bbox,
     )
     db.add(det)
