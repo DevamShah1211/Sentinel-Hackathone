@@ -7,7 +7,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy import func, select, desc, text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -226,3 +226,68 @@ async def audit_trail(
         }
         for entry in entries
     ]
+
+
+# ─── VAHAN enrichment (contract-first, mock-backed) ───────────────────────────
+
+@router.get("/vehicle/{plate_text}",
+            summary="Vehicle particulars for a plate (VAHAN adapter)")
+async def vehicle_lookup(
+    plate_text: str,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    actor: str = Query("operator"),
+    purpose: str = Query("investigation", description="Why — recorded in the audit log"),
+    case_ref: Optional[str] = Query(None),
+):
+    """
+    Enrich a plate with owner and vehicle details.
+
+    VAHAN is a closed system with no access route for this prototype, so the
+    adapter is contract-first and backed by a documented mock. Every response
+    states its `source`; a `source` of "mock" is synthetic and must not be treated
+    as authoritative. See DOCS/HLD.md §10 for what changes on credential grant.
+    """
+    from app.adapters.vahan import VahanLookupError, VehicleNotFound, get_vahan_client
+
+    client = get_vahan_client()
+    try:
+        record = await client.lookup(plate_text)
+    except VehicleNotFound as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except VahanLookupError as exc:
+        raise HTTPException(503, str(exc)) from exc
+
+    # Looking up an owner is access to personal data and is always audited.
+    await audit.record(
+        db, actor=actor, action="vehicle_lookup", object_type="plate",
+        object_id=record.registration_number, purpose=purpose, case_ref=case_ref,
+        request=request, details={"source": record.source},
+    )
+
+    return {
+        "registration_number": record.registration_number,
+        "owner_name": record.owner_name,
+        "vehicle_class": record.vehicle_class,
+        "maker_model": record.maker_model,
+        "fuel_type": record.fuel_type,
+        "colour": record.colour,
+        "registration_date": record.registration_date,
+        "registering_authority": record.registering_authority,
+        "chassis_number_masked": record.chassis_number_masked,
+        "engine_number_masked": record.engine_number_masked,
+        "insurance_valid_upto": record.insurance_valid_upto,
+        "insurance_expired": record.insurance_expired,
+        "puc_valid_upto": record.puc_valid_upto,
+        "puc_expired": record.puc_expired,
+        "fitness_valid_upto": record.fitness_valid_upto,
+        "is_blacklisted": record.is_blacklisted,
+        "blacklist_reason": record.blacklist_reason,
+        "source": record.source,
+        "is_authoritative": not record.is_mock,
+        "disclaimer": (
+            "Synthetic record from the documented VAHAN mock adapter — not "
+            "authoritative. See DOCS/HLD.md section 10."
+        ) if record.is_mock else None,
+        "retrieved_at": record.retrieved_at,
+    }
