@@ -1,7 +1,19 @@
 import { useState, useCallback } from 'react'
 import { MapContainer, TileLayer, CircleMarker, Polyline, Popup } from 'react-leaflet'
-import { Search, Map, Download, X } from 'lucide-react'
-import { searchDetections, getPlateRoute, downloadReport } from '../api/client'
+import { AlertTriangle, Car, Download, Map, Search, X } from 'lucide-react'
+import {
+    downloadReport, getPlateRoute, getVehicleDetails, saveBlob, searchDetections,
+} from '../api/client'
+
+interface VehicleDetails {
+    registration_number: string; owner_name: string; vehicle_class: string
+    maker_model: string; fuel_type: string; colour: string
+    registering_authority: string; registration_date?: string
+    insurance_valid_upto?: string; insurance_expired: boolean
+    puc_valid_upto?: string; puc_expired: boolean
+    is_blacklisted: boolean; blacklist_reason?: string
+    source: string; is_authoritative: boolean; disclaimer?: string
+}
 
 interface Detection {
     id: string; plate_text: string; confidence: number;
@@ -18,7 +30,11 @@ interface RouteSighting {
 
 interface RouteData {
     plate: string; total_sightings: number; sightings: RouteSighting[];
+    flagged_transitions?: number;
     route_geojson: { type: string; coordinates: [number, number][] };
+    /** Road-network interpolation from OSRM. Presentation only — the straight
+     *  line between sightings is what the data actually supports. */
+    road_snapped_geojson?: { type: string; coordinates: [number, number][] } | null;
 }
 
 function ConfBar({ value }: { value: number }) {
@@ -37,6 +53,12 @@ function RoutePanel({ route, onClose }: { route: RouteData; onClose: () => void 
         .filter(([lon, lat]) => lat && lon)
         .map(([lon, lat]) => [lat, lon])
 
+    // The road-snapped path is an interpolation over the street network, drawn
+    // beneath the straight line so the two are visually distinguishable.
+    const snapped: [number, number][] = (route.road_snapped_geojson?.coordinates ?? [])
+        .filter(([lon, lat]) => lat && lon)
+        .map(([lon, lat]) => [lat, lon])
+
     const center: [number, number] = coords.length > 0 ? coords[Math.floor(coords.length / 2)] : [23.0225, 72.5714]
 
     return (
@@ -49,14 +71,35 @@ function RoutePanel({ route, onClose }: { route: RouteData; onClose: () => void 
                     </div>
                     <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                         <span className="badge-pill pill-blue">{route.total_sightings} sightings</span>
+                        {!!route.flagged_transitions && (
+                            <span className="badge-pill" style={{ background: 'var(--red-glow)', color: 'var(--red)' }}>
+                                <AlertTriangle size={11} style={{ verticalAlign: -1 }} />{' '}
+                                {route.flagged_transitions} implausible
+                            </span>
+                        )}
                         <button className="btn btn-ghost btn-sm" onClick={onClose}><X size={14} /></button>
                     </div>
                 </div>
                 <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
                     {/* Map */}
-                    <div style={{ flex: 1 }}>
+                    <div style={{ flex: 1, position: 'relative' }}>
+                        <div style={{
+                            position: 'absolute', bottom: 10, left: 10, zIndex: 500,
+                            background: 'rgba(15,23,33,0.85)', border: '1px solid var(--border)',
+                            borderRadius: 6, padding: '6px 10px', fontSize: 11, lineHeight: 1.7,
+                            color: 'var(--text-secondary)', pointerEvents: 'none',
+                        }}>
+                            <div><span style={{ display: 'inline-block', width: 18, borderTop: '2px dashed #3b82f6', verticalAlign: 3 }} /> sighting sequence</div>
+                            {snapped.length > 1 && (
+                                <div><span style={{ display: 'inline-block', width: 18, borderTop: '4px solid rgba(34,197,94,0.6)', verticalAlign: 3 }} /> road interpolation</div>
+                            )}
+                            <div><span style={{ color: 'var(--red)' }}>●</span> implausible transition</div>
+                        </div>
                         <MapContainer center={center} zoom={12} style={{ height: '100%' }}>
                             <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution='&copy; OpenStreetMap' />
+                            {snapped.length > 1 && (
+                                <Polyline positions={snapped} pathOptions={{ color: '#22c55e', weight: 5, opacity: 0.45 }} />
+                            )}
                             {coords.length > 1 && <Polyline positions={coords} pathOptions={{ color: '#3b82f6', weight: 3, dashArray: '8 4' }} />}
                             {route.sightings.filter(s => s.lat && s.lon).map(s => (
                                 <CircleMarker key={s.index} center={[s.lat!, s.lon!]} radius={8}
@@ -101,37 +144,69 @@ export default function SearchPage() {
     const [loading, setLoading] = useState(false)
     const [route, setRoute] = useState<RouteData | null>(null)
     const [searched, setSearched] = useState(false)
+    const [purpose, setPurpose] = useState('investigation')
+    const [caseRef, setCaseRef] = useState('')
+    const [vehicle, setVehicle] = useState<VehicleDetails | null>(null)
+    const [vehicleLoading, setVehicleLoading] = useState(false)
 
     const handleSearch = useCallback(async () => {
         if (!query.trim()) return
         setLoading(true)
         setSearched(true)
+        setVehicle(null)
         try {
-            const data = await searchDetections({ plate: query.trim(), fuzzy, limit: 100 })
+            // actor/purpose/case_ref are recorded in the audit trail — access to
+            // vehicle movement data is always attributable.
+            const data = await searchDetections({
+                plate: query.trim(), fuzzy, limit: 100,
+                actor: 'operator', purpose: purpose || 'investigation',
+                case_ref: caseRef || undefined,
+            })
             setResults(data)
         } finally { setLoading(false) }
-    }, [query, fuzzy])
+    }, [query, fuzzy, purpose, caseRef])
 
     const showRoute = async (plate: string) => {
-        const data = await getPlateRoute(plate)
+        const data = await getPlateRoute(plate, {
+            actor: 'operator', purpose: purpose || 'investigation',
+            case_ref: caseRef || undefined,
+        })
         setRoute(data)
     }
 
-    const handleDownload = async () => {
-        const blob = await downloadReport()
-        const url = URL.createObjectURL(blob)
-        const a = document.createElement('a')
-        a.href = url; a.download = `sentinel_report_${Date.now()}.xlsx`; a.click()
-        URL.revokeObjectURL(url)
+    const lookupVehicle = async (plate: string) => {
+        setVehicleLoading(true)
+        try {
+            const data = await getVehicleDetails(plate, {
+                actor: 'operator', purpose: purpose || 'investigation',
+                case_ref: caseRef || undefined,
+            })
+            setVehicle(data)
+        } catch {
+            setVehicle(null)
+        } finally { setVehicleLoading(false) }
+    }
+
+    const handleDownload = async (format: 'xlsx' | 'pdf') => {
+        const blob = await downloadReport(format, {
+            plate: query.trim() || undefined,
+            actor: 'operator', purpose: 'submission-artefact',
+        })
+        saveBlob(blob, `sentinel_report_${Date.now()}.${format}`)
     }
 
     return (
         <div className="page-content">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
                 <h1 style={{ fontSize: 20, fontWeight: 700 }}>Plate Search</h1>
-                <button className="btn btn-ghost btn-sm" onClick={handleDownload}>
-                    <Download size={13} /> Export XLSX Report
-                </button>
+                <div style={{ display: 'flex', gap: 8 }}>
+                    <button className="btn btn-ghost btn-sm" onClick={() => handleDownload('xlsx')}>
+                        <Download size={13} /> XLSX
+                    </button>
+                    <button className="btn btn-ghost btn-sm" onClick={() => handleDownload('pdf')}>
+                        <Download size={13} /> PDF
+                    </button>
+                </div>
             </div>
 
             {/* Search bar */}
@@ -154,8 +229,35 @@ export default function SearchPage() {
                 </button>
             </div>
 
+            {/* Purpose binding — recorded in the audit trail with every search. */}
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 10, flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 1 }}>
+                    Purpose
+                </span>
+                <select
+                    className="input"
+                    style={{ maxWidth: 190, fontSize: 12, padding: '5px 8px' }}
+                    value={purpose}
+                    onChange={e => setPurpose(e.target.value)}
+                >
+                    <option value="investigation">Investigation</option>
+                    <option value="stolen-vehicle">Stolen vehicle</option>
+                    <option value="traffic-enforcement">Traffic enforcement</option>
+                    <option value="missing-person">Missing person</option>
+                    <option value="verification">Verification</option>
+                </select>
+                <input
+                    className="input"
+                    style={{ maxWidth: 190, fontSize: 12, padding: '5px 8px' }}
+                    placeholder="Case ref (e.g. FIR/2026/001)"
+                    value={caseRef}
+                    onChange={e => setCaseRef(e.target.value)}
+                />
+            </div>
+
             <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 16 }}>
-                Supports exact, partial, and fuzzy plate matching (tolerates OCR errors via pg_trgm)
+                Supports exact, partial, and fuzzy plate matching (tolerates OCR errors via pg_trgm).
+                Every search is recorded in the audit trail with its stated purpose.
             </div>
 
             {/* Results */}
@@ -175,10 +277,88 @@ export default function SearchPage() {
                         <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
                             <strong style={{ color: 'var(--text-primary)' }}>{results.length}</strong> sighting{results.length !== 1 ? 's' : ''} found
                         </span>
-                        <button className="btn btn-ghost btn-sm" onClick={() => showRoute(query)}>
-                            <Map size={13} /> Show Route on Map
-                        </button>
+                        <div style={{ display: 'flex', gap: 8 }}>
+                            <button className="btn btn-ghost btn-sm" onClick={() => lookupVehicle(results[0].plate_text)}>
+                                {vehicleLoading ? <div className="spinner" /> : <Car size={13} />} Vehicle details
+                            </button>
+                            <button className="btn btn-ghost btn-sm" onClick={() => showRoute(query)}>
+                                <Map size={13} /> Show Route on Map
+                            </button>
+                        </div>
                     </div>
+
+                    {vehicle && (
+                        <div style={{
+                            border: '1px solid var(--border)', borderRadius: 10, padding: 14,
+                            marginBottom: 12, background: 'var(--bg-card)',
+                        }}>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                    <Car size={15} />
+                                    <strong style={{ fontFamily: 'var(--font-mono)', letterSpacing: 1.5 }}>
+                                        {vehicle.registration_number}
+                                    </strong>
+                                    {vehicle.is_blacklisted && (
+                                        <span className="badge-pill" style={{ background: 'var(--red-glow)', color: 'var(--red)' }}>
+                                            BLACKLISTED
+                                        </span>
+                                    )}
+                                </div>
+                                <button className="btn btn-ghost btn-sm" onClick={() => setVehicle(null)}><X size={13} /></button>
+                            </div>
+
+                            {/* A mock record must never read as authoritative. */}
+                            {!vehicle.is_authoritative && (
+                                <div style={{
+                                    display: 'flex', gap: 6, alignItems: 'flex-start',
+                                    background: 'var(--yellow-glow, rgba(234,179,8,0.12))',
+                                    border: '1px solid rgba(234,179,8,0.35)', borderRadius: 6,
+                                    padding: '7px 10px', marginBottom: 12, fontSize: 11.5,
+                                    color: 'var(--yellow, #eab308)',
+                                }}>
+                                    <AlertTriangle size={14} style={{ flexShrink: 0, marginTop: 1 }} />
+                                    <span>{vehicle.disclaimer ?? 'Synthetic record — not authoritative.'}</span>
+                                </div>
+                            )}
+
+                            <div style={{
+                                display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
+                                gap: '8px 18px', fontSize: 12.5,
+                            }}>
+                                {([
+                                    ['Owner', vehicle.owner_name],
+                                    ['Make / model', vehicle.maker_model],
+                                    ['Class', vehicle.vehicle_class],
+                                    ['Colour', vehicle.colour],
+                                    ['Fuel', vehicle.fuel_type],
+                                    ['Registering authority', vehicle.registering_authority],
+                                ] as const).map(([label, value]) => (
+                                    <div key={label}>
+                                        <div style={{ fontSize: 10.5, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.6 }}>
+                                            {label}
+                                        </div>
+                                        <div>{value}</div>
+                                    </div>
+                                ))}
+                                <div>
+                                    <div style={{ fontSize: 10.5, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.6 }}>
+                                        Insurance
+                                    </div>
+                                    <div style={{ color: vehicle.insurance_expired ? 'var(--red)' : undefined }}>
+                                        {vehicle.insurance_valid_upto ?? '—'}{vehicle.insurance_expired ? ' (expired)' : ''}
+                                    </div>
+                                </div>
+                                <div>
+                                    <div style={{ fontSize: 10.5, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.6 }}>
+                                        PUC
+                                    </div>
+                                    <div style={{ color: vehicle.puc_expired ? 'var(--red)' : undefined }}>
+                                        {vehicle.puc_valid_upto ?? '—'}{vehicle.puc_expired ? ' (expired)' : ''}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                         {results.map(det => (
                             <div key={det.id} className="detection-card">

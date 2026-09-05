@@ -39,7 +39,27 @@ export const bulkImportWatchlist = (file: File) => {
 export const getAnalyticsSummary = () => api.get('/analytics/summary').then(r => r.data)
 export const getTopPlates = () => api.get('/analytics/top-plates').then(r => r.data)
 export const getDetectionsByHour = () => api.get('/analytics/detections-by-hour').then(r => r.data)
-export const downloadReport = () =>
-    api.get('/analytics/report/xlsx', { responseType: 'blob' }).then(r => r.data)
+export const downloadReport = (format: 'xlsx' | 'pdf' = 'xlsx', params?: Record<string, unknown>) =>
+    api.get(`/analytics/report/${format}`, { responseType: 'blob', params }).then(r => r.data)
+
+/** Vehicle particulars for a plate. Mock-backed until VAHAN credentials exist —
+ *  the response says so via `source` and `is_authoritative`. */
+export const getVehicleDetails = (plate: string, params?: Record<string, unknown>) =>
+    api.get(`/analytics/vehicle/${encodeURIComponent(plate)}`, { params }).then(r => r.data)
+
+export const getAuditTrail = (params?: Record<string, unknown>) =>
+    api.get('/analytics/audit', { params }).then(r => r.data)
+
+/** Trigger a browser download for a report blob. */
+export const saveBlob = (blob: Blob, filename: string) => {
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = filename
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    URL.revokeObjectURL(url)
+}
 
 export default api

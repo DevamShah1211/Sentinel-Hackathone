@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { MapContainer, TileLayer, CircleMarker, Popup, useMap } from 'react-leaflet'
+import Hls from 'hls.js'
 import { RefreshCw, Layers, CheckCircle2, XCircle } from 'lucide-react'
 import { getCamerasGeoJSON, syncCatalogue, getIngestStatus } from '../api/client'
 import type { LatLngExpression } from 'leaflet'
@@ -12,7 +13,18 @@ interface CameraFeature {
         status: string; is_live: boolean; codec: string;
         hls_url: string;
         camera_type: string; address: string;
+        // How this camera's coordinates were arrived at.
+        geo_source?: string; geo_confidence?: number; district?: string;
     }
+}
+
+/** Plain-language provenance for a camera's coordinates. The catalogue publishes
+ *  no locations, so every position is derived and the map says how. */
+const GEO_SOURCE_LABEL: Record<string, string> = {
+    manual: 'Hand-verified against the site named in the catalogue',
+    nominatim: 'Geocoded from the camera name (OpenStreetMap)',
+    district_centroid: 'Approximate — district centroid only',
+    unresolved: 'Not resolved',
 }
 
 const DEPT_COLOURS: Record<string, string> = {
@@ -26,6 +38,64 @@ const DEPT_COLOURS: Record<string, string> = {
 
 function deptColor(dept: string): string {
     return DEPT_COLOURS[dept] || DEPT_COLOURS['Unknown']
+}
+
+/**
+ * Live preview inside a map popup.
+ *
+ * Plays through the platform's authenticated HLS proxy, so no sandbox credential
+ * reaches the browser. The player is destroyed when the popup closes — popups
+ * open and close constantly while panning, and an undestroyed player per click
+ * would accumulate quickly.
+ */
+function PopupPreview({ cam }: { cam: CameraFeature['properties'] }) {
+    const videoRef = useRef<HTMLVideoElement | null>(null)
+    const [failed, setFailed] = useState(false)
+
+    useEffect(() => {
+        const video = videoRef.current
+        if (!video || !cam.hls_url) return
+
+        let hls: Hls | null = null
+        if (Hls.isSupported()) {
+            hls = new Hls({ lowLatencyMode: true, backBufferLength: 6, maxBufferLength: 8 })
+            hls.loadSource(cam.hls_url)
+            hls.attachMedia(video)
+            hls.on(Hls.Events.MANIFEST_PARSED, () => { video.play().catch(() => {}) })
+            hls.on(Hls.Events.ERROR, (_e, data) => { if (data.fatal) setFailed(true) })
+        } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+            video.src = cam.hls_url
+            video.play().catch(() => {})
+        } else {
+            setFailed(true)
+        }
+
+        return () => {
+            if (hls) hls.destroy()
+            else { video.removeAttribute('src'); video.load() }
+        }
+    }, [cam.hls_url])
+
+    if (failed) {
+        return (
+            <div style={{
+                width: '100%', height: '100%', display: 'flex', alignItems: 'center',
+                justifyContent: 'center', color: '#8b95a5', fontSize: 11,
+            }}>
+                Stream unavailable
+            </div>
+        )
+    }
+
+    return (
+        <video
+            ref={videoRef}
+            muted
+            playsInline
+            autoPlay
+            style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+        />
+    )
 }
 
 function MapFlyTo({ lat, lon }: { lat: number; lon: number }) {
@@ -161,14 +231,20 @@ export default function MapPage() {
                                         </span></div>
                                         <div className="popup-row">Codec: <span>{p.codec?.toUpperCase() || 'Unknown'}</span></div>
                                         <div className="popup-row">Type: <span>{p.camera_type || 'fixed_dome'}</span></div>
+                                        {p.district && <div className="popup-row">District: <span>{p.district}</span></div>}
                                         {p.address && <div className="popup-row">Address: <span>{p.address}</span></div>}
+                                        {p.geo_source && (
+                                            <div className="popup-row" style={{ marginTop: 4 }}>
+                                                Location:{' '}
+                                                <span style={{ color: (p.geo_confidence ?? 0) >= 0.8 ? 'var(--green)' : 'var(--yellow, #eab308)' }}>
+                                                    {GEO_SOURCE_LABEL[p.geo_source] ?? p.geo_source}
+                                                </span>
+                                            </div>
+                                        )}
                                         <div style={{ width: 220, height: 130, marginTop: 8, borderRadius: 6, overflow: 'hidden', background: '#000' }}>
-                                            <iframe
-                                                src={`http://devam6205%40gmail.com:GAQA-H7HN-P2GE@103.250.160.189:8889/stream/${p.native_id}/?autoplay=true&muted=true`}
-                                                title={p.name}
-                                                style={{ width: '100%', height: '100%', border: 'none' }}
-                                                allow="autoplay; fullscreen"
-                                            />
+                                            {/* Streams play through the platform's authenticated proxy — no
+                                                sandbox credential is ever placed in the page. */}
+                                            <PopupPreview cam={p} />
                                         </div>
                                     </div>
                                 </Popup>

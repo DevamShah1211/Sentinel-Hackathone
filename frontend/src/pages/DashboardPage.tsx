@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { BarChart2, Download, RefreshCw } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
-import { getAnalyticsSummary, getTopPlates, getDetectionsByHour, downloadReport } from '../api/client'
+import { getAnalyticsSummary, getTopPlates, getDetectionsByHour, downloadReport, saveBlob } from '../api/client'
 
 interface Summary {
     cameras: { total: number; live: number; offline: number }
@@ -33,12 +33,12 @@ export default function DashboardPage() {
 
     useEffect(() => { load() }, [])
 
-    const handleDownload = async () => {
-        const blob = await downloadReport()
-        const url = URL.createObjectURL(blob)
-        const a = document.createElement('a')
-        a.href = url; a.download = `sentinel_report_${Date.now()}.xlsx`; a.click()
-        URL.revokeObjectURL(url)
+    const handleDownload = async (format: 'xlsx' | 'pdf') => {
+        // Exports are audited; the purpose travels with the request.
+        const blob = await downloadReport(format, {
+            actor: 'operator', purpose: 'submission-artefact',
+        })
+        saveBlob(blob, `sentinel_anpr_report_${Date.now()}.${format}`)
     }
 
     if (loading) return <div className="page-content"><div className="loading-overlay"><div className="spinner" /><span>Loading dashboard…</span></div></div>
@@ -53,7 +53,8 @@ export default function DashboardPage() {
                     </div>
                 </div>
                 <div style={{ display: 'flex', gap: 8 }}>
-                    <button className="btn btn-ghost btn-sm" onClick={handleDownload}><Download size={13} /> XLSX Report</button>
+                    <button className="btn btn-ghost btn-sm" onClick={() => handleDownload('xlsx')}><Download size={13} /> XLSX Report</button>
+                    <button className="btn btn-ghost btn-sm" onClick={() => handleDownload('pdf')}><Download size={13} /> PDF Report</button>
                     <button className="btn btn-ghost btn-sm" onClick={load}><RefreshCw size={13} /></button>
                 </div>
             </div>
