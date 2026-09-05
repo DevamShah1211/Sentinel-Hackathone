@@ -45,6 +45,12 @@ Every line here can be re-checked with the command beside it.
 | Rate limiting | — | 11th login attempt in a minute → 429 |
 | Audit trail | Live | `GET /api/v1/analytics/audit` as state admin |
 | Test credentials | `README.md` | Three seeded accounts |
+| **Model 1 — gap-analysis report** | `GET /analytics/gap-report/xlsx` | 18.2% district coverage, 27 uncovered, worst gap 156 km |
+| **Model 1 — bulk CSV onboarding** | `POST /cameras/bulk-import` | Template at `/cameras/bulk-import/template`; `dry_run=true` validates |
+| **Model 1 — camera health** | `GET /cameras/health-status` | Operational / stale / offline per camera |
+| **Model 2 — event tagging** | `POST /detections/{id}/tags` | Then `GET /detections?tag=suspect-vehicle` |
+| **Model 2 — second system** | `python tools/add_external_camera.py --help` | Registers an ONVIF/NVR/vendor feed; verifies it decodes first |
+| **Model 2 — systems unaffected** | `DOCS/HLD.md` §3.0 | Consumer never controller, enforced in code |
 
 ---
 
