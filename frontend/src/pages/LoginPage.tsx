@@ -111,7 +111,7 @@ export default function LoginPage({ onSignedIn }: { onSignedIn: (u: AuthUser) =>
                 <div className="login-demo">
                     <div className="login-demo-head">
                         <ShieldCheck size={13} aria-hidden="true" />
-                        Demonstration accounts
+                        Demonstration accounts — click to sign in
                     </div>
                     {DEMO_ACCOUNTS.map(account => (
                         <button

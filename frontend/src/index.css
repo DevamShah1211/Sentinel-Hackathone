@@ -689,6 +689,7 @@ tr:last-child td { border-bottom: none; }
 }
 
 .login-card {
+  box-shadow: var(--shadow-lg);
   width: 100%;
   max-width: 424px;
   background: var(--bg-card);
@@ -734,7 +735,24 @@ tr:last-child td { border-bottom: none; }
   border-radius: var(--radius); cursor: pointer; text-align: left;
   font: inherit; color: var(--text-secondary); transition: background 0.15s, border-color 0.15s;
 }
-.login-demo-row:hover { background: var(--bg-input); border-color: var(--border-light); }
+.login-demo-row:hover {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  transform: translateX(2px);
+}
+.login-demo-row { transition: all 0.15s var(--ease); }
+/* The rows sign you in on click. Nothing said so, so they read as a legend. */
+.login-demo-row::after {
+  content: 'Use';
+  margin-left: auto;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  opacity: 0;
+  transition: opacity 0.15s var(--ease);
+}
+.login-demo-row:hover::after { opacity: 1; color: var(--accent); }
 .login-demo-role { font-size: 12.5px; font-weight: 600; color: var(--text-primary); min-width: 108px; }
 .login-demo-grants { font-size: 11px; color: var(--text-muted); }
 
