@@ -88,7 +88,7 @@ GUJARAT_RTO: dict[int, str] = {
     11: "Junagadh", 12: "Bhuj", 13: "Surendranagar", 14: "Amreli", 15: "Valsad",
     16: "Bharuch", 17: "Godhra", 18: "Gandhinagar", 19: "Bardoli", 20: "Dahod",
     21: "Navsari", 22: "Rajpipla", 23: "Anand", 24: "Patan", 25: "Porbandar",
-    26: "Vyara", 27: "Ahmedabad East", 28: "Surat (Bardoli extn)", 29: "Vadodara Rural",
+    26: "Vyara", 27: "Ahmedabad East", 28: "Surat (Bardoli extension)", 29: "Vadodara Rural",
     30: "Chhota Udaipur", 31: "Veraval", 32: "Rajkot Rural", 33: "Botad",
     34: "Morbi", 35: "Gir Somnath", 36: "Devbhoomi Dwarka", 37: "Mahisagar",
     38: "Aravalli", 39: "Modasa",

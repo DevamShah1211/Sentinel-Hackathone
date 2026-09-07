@@ -261,3 +261,43 @@ class TestRTODistricts:
         reads = [PlateRead("GJ96XY4455", [1.0] * 10) for _ in range(6)]
         plate, _, _ = vote(reads)
         assert plate == "GJ96XY4455"
+
+
+class TestRTOReference:
+    """
+    The published reference and the code must not drift apart.
+
+    DOCS/RTO_CODES_INDIA.md is what a reviewer reads; app/rto_codes.py is what
+    the recogniser obeys. If they disagree, the document is misleading about a
+    system that identifies vehicles.
+    """
+
+    def _doc(self):
+        from pathlib import Path
+        path = Path(__file__).resolve().parents[2] / "DOCS" / "RTO_CODES_INDIA.md"
+        return path.read_text(encoding="utf-8")
+
+    def test_every_gujarat_district_is_documented_with_the_same_name(self):
+        import re
+
+        from app.rto_codes import GUJARAT_RTO
+
+        doc = self._doc()
+        found = {int(n): name.strip() for n, name
+                 in re.findall(r"GJ-(\d{2}) \| ([^|]+?)\s*(?=\||$)", doc)}
+        assert found == GUJARAT_RTO
+
+    def test_every_state_code_appears_in_the_reference(self):
+        from app.rto_codes import RTO_MAX
+
+        doc = self._doc()
+        for code in RTO_MAX:
+            assert f"| {code} |" in doc or f"| {code} / " in doc \
+                or f"/ {code} |" in doc or f"**{code}**" in doc, code
+
+    def test_gujarat_upper_bound_matches_the_named_districts(self):
+        """GJ-39 is the highest issued, and the table names exactly that many."""
+        from app.rto_codes import GUJARAT_RTO, RTO_MAX
+
+        assert RTO_MAX["GJ"] == max(GUJARAT_RTO)
+        assert set(GUJARAT_RTO) == set(range(1, RTO_MAX["GJ"] + 1))
