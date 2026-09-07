@@ -107,7 +107,10 @@ function RoutePanel({ route, onClose }: { route: RouteData; onClose: () => void 
                             <div><span style={{ color: 'var(--red)' }}>●</span> implausible transition</div>
                         </div>
                         <MapContainer center={center} zoom={12} style={{ height: '100%' }}>
-                            <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution='&copy; OpenStreetMap' />
+                            <TileLayer
+                                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                                attribution='&copy; OpenStreetMap contributors'
+                            />
                             {snapped.length > 1 && (
                                 <Polyline positions={snapped} pathOptions={{ color: '#22c55e', weight: 5, opacity: 0.45 }} />
                             )}
