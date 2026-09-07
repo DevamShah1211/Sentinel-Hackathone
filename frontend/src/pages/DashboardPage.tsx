@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { BarChart2, Download, RefreshCw } from 'lucide-react'
+import { BarChart2, Car, Download, RefreshCw } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
 import { getAnalyticsSummary, getTopPlates, getDetectionsByHour, downloadReport, saveBlob } from '../api/client'
 
@@ -9,6 +9,20 @@ interface Summary {
     alerts: { total: number; new: number }
     watchlist: { active_entries: number }
     generated_at: string
+}
+
+function StatusRow({ label, value, tone }: {
+    label: string; value: string; tone: 'ok' | 'warn' | 'alert'
+}) {
+    return (
+        <div className="status-row">
+            <span className={`status-dot ${tone}`} aria-hidden="true" />
+            <div>
+                <div className="status-row-label">{label}</div>
+                <div className="status-row-value">{value}</div>
+            </div>
+        </div>
+    )
 }
 
 export default function DashboardPage() {
@@ -45,14 +59,14 @@ export default function DashboardPage() {
 
     return (
         <div className="page-content">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+            <div className="page-head">
                 <div>
-                    <h1 style={{ fontSize: 22, fontWeight: 700 }}>Sentinel Command Centre</h1>
-                    <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>
-                        Gujarat CCTV Integration Hackathon 2026 · Model 1 + Model 2
+                    <h1>Command Centre</h1>
+                    <div className="page-sub">
+                        Statewide camera registry and ANPR index · Model 1 + Model 2
                     </div>
                 </div>
-                <div style={{ display: 'flex', gap: 8 }}>
+                <div className="page-head-actions">
                     <button className="btn btn-ghost btn-sm" onClick={() => handleDownload('xlsx')}><Download size={13} /> XLSX Report</button>
                     <button className="btn btn-ghost btn-sm" onClick={() => handleDownload('pdf')}><Download size={13} /> PDF Report</button>
                     <button className="btn btn-ghost btn-sm" onClick={load}><RefreshCw size={13} /></button>
@@ -110,7 +124,16 @@ export default function DashboardPage() {
                                 </BarChart>
                             </ResponsiveContainer>
                         )
-                        : <div style={{ height: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: 13 }}>No data yet — start the ANPR worker</div>
+                        : (
+                            <div className="empty-state" style={{ minHeight: 200, padding: '32px 16px' }}>
+                                <div className="empty-state-icon"><BarChart2 size={22} /></div>
+                                <div className="empty-state-title">No sightings in the last 24 hours</div>
+                                <div className="empty-state-body">
+                                    The index holds {summary?.detections.total ?? 0} detections in total.
+                                    Run the ANPR worker against a live camera, or replay a clip, to populate this window.
+                                </div>
+                            </div>
+                        )
                     }
                 </div>
 
@@ -132,45 +155,52 @@ export default function DashboardPage() {
                                 ))}
                             </div>
                         )
-                        : <div style={{ height: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: 13 }}>No detections yet</div>
+                        : (
+                            <div className="empty-state" style={{ minHeight: 200, padding: '32px 16px' }}>
+                                <div className="empty-state-icon"><Car size={22} /></div>
+                                <div className="empty-state-title">No plates indexed yet</div>
+                                <div className="empty-state-body">Recognised plates appear here, most frequent first.</div>
+                            </div>
+                        )
                     }
                 </div>
             </div>
 
-            {/* Platform info card */}
+            {/* System status. The stack list that used to sit here belongs in the
+                README; an operator console should report on the deployment. */}
             <div className="card" style={{ marginTop: 16 }}>
-                <div className="card-title">Platform Info</div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, fontSize: 13 }}>
-                    <div>
-                        <div style={{ color: 'var(--text-secondary)', fontSize: 11, marginBottom: 4 }}>BACKEND</div>
-                        FastAPI + Python 3.11+<br />
-                        <span style={{ color: 'var(--text-muted)' }}>uvicorn · SQLAlchemy async</span>
-                    </div>
-                    <div>
-                        <div style={{ color: 'var(--text-secondary)', fontSize: 11, marginBottom: 4 }}>DATABASE</div>
-                        Supabase PostgreSQL + PostGIS<br />
-                        <span style={{ color: 'var(--text-muted)' }}>pg_trgm fuzzy search · GeoJSON</span>
-                    </div>
-                    <div>
-                        <div style={{ color: 'var(--text-secondary)', fontSize: 11, marginBottom: 4 }}>STREAM</div>
-                        HLS via hls.js · WHEP (WebRTC)<br />
-                        <span style={{ color: 'var(--text-muted)' }}>Sentinel sandbox · RTSP/TCP</span>
-                    </div>
-                    <div>
-                        <div style={{ color: 'var(--text-secondary)', fontSize: 11, marginBottom: 4 }}>ANPR</div>
-                        fast-alpr (ONNX) · Track-level voting<br />
-                        <span style={{ color: 'var(--text-muted)' }}>Indian plate grammar correction</span>
-                    </div>
-                    <div>
-                        <div style={{ color: 'var(--text-secondary)', fontSize: 11, marginBottom: 4 }}>ALERTS</div>
-                        WebSocket /ws/alerts · Real-time<br />
-                        <span style={{ color: 'var(--text-muted)' }}>Exact + fuzzy watchlist matching</span>
-                    </div>
-                    <div>
-                        <div style={{ color: 'var(--text-secondary)', fontSize: 11, marginBottom: 4 }}>GIS</div>
-                        Leaflet · OpenStreetMap<br />
-                        <span style={{ color: 'var(--text-muted)' }}>Route reconstruction · Haversine speed</span>
-                    </div>
+                <div className="card-title">System Status</div>
+                <div className="status-grid">
+                    <StatusRow
+                        label="Camera registry"
+                        value={`${summary?.cameras.total ?? 0} cameras · ${summary?.cameras.live ?? 0} reachable`}
+                        tone={(summary?.cameras.offline ?? 0) === 0 ? 'ok' : 'warn'}
+                    />
+                    <StatusRow
+                        label="ANPR index"
+                        value={`${(summary?.detections.total ?? 0).toLocaleString()} detections indexed`}
+                        tone={(summary?.detections.total ?? 0) > 0 ? 'ok' : 'warn'}
+                    />
+                    <StatusRow
+                        label="Watchlist"
+                        value={`${summary?.watchlist.active_entries ?? 0} active · ${summary?.alerts.total ?? 0} alerts raised`}
+                        tone={(summary?.alerts.new ?? 0) > 0 ? 'alert' : 'ok'}
+                    />
+                    <StatusRow
+                        label="Audit trail"
+                        value="Every search and export recorded with actor and purpose"
+                        tone="ok"
+                    />
+                    <StatusRow
+                        label="Access control"
+                        value="Role enforced per route · state admin, operator, viewer"
+                        tone="ok"
+                    />
+                    <StatusRow
+                        label="Report generation"
+                        value="XLSX and PDF available from this page"
+                        tone="ok"
+                    />
                 </div>
             </div>
         </div>

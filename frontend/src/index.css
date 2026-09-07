@@ -5,40 +5,55 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  --bg-base:      #0b0f1a;
-  --bg-surface:   #111827;
-  --bg-card:      #1a2236;
-  --bg-input:     #1e2a3a;
-  --border:       #243050;
-  --border-light: #2e3a52;
+  /* Surfaces. A four-step ramp, not two: depth is what separates a console
+     from a web page. Each step is a real luminance jump so cards read as
+     stacked planes rather than same-colour rectangles with borders. */
+  --bg-base:      #070b14;
+  --bg-surface:   #0d1320;
+  --bg-card:      #131b2c;
+  --bg-raised:    #1a2438;
+  --bg-input:     #0f1725;
 
-  --accent:       #3b82f6;
-  --accent-glow:  #3b82f640;
-  --accent-dim:   #1d4ed8;
-  --green:        #22c55e;
-  --yellow:       #f59e0b;
-  --red:          #ef4444;
-  --red-glow:     #ef444430;
+  --border:       #1f2b44;
+  --border-light: #2b3a58;
+  --border-strong:#3a4d73;
+
+  --accent:       #4d8dff;
+  --accent-soft:  rgba(77,141,255,0.12);
+  --accent-glow:  rgba(77,141,255,0.28);
+  --accent-dim:   #2f6ee0;
+  --green:        #2fd48b;
+  --green-soft:   rgba(47,212,139,0.12);
+  --yellow:       #f5b342;
+  --yellow-soft:  rgba(245,179,66,0.12);
+  --red:          #ff5c5c;
+  --red-soft:     rgba(255,92,92,0.12);
+  --red-glow:     rgba(255,92,92,0.25);
   --purple:       #a855f7;
 
-  --text-primary:   #e2e8f0;
-  --text-secondary: #94a3b8;
-  --text-muted:     #7d8da3;
+  --text-primary:   #eef2f9;
+  --text-secondary: #97a6bf;
+  --text-muted:     #6b7c98;
 
-  --font-sans: 'Inter', system-ui, sans-serif;
-  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
 
   --radius: 8px;
   --radius-lg: 12px;
-  --shadow: 0 4px 24px rgba(0,0,0,0.4);
-  --glow: 0 0 20px var(--accent-glow);
-  --sidebar-w: 220px;
+  /* Layered shadows read as physical depth; a single flat shadow does not. */
+  --shadow: 0 1px 2px rgba(0,0,0,0.4), 0 8px 24px rgba(0,0,0,0.35);
+  --shadow-lg: 0 2px 4px rgba(0,0,0,0.4), 0 16px 48px rgba(0,0,0,0.5);
+  --glow: 0 0 0 1px var(--accent-glow), 0 4px 20px var(--accent-glow);
+  --sidebar-w: 232px;
   --header-h: 56px;
+  --ease: cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 html, body {
   height: 100%;
-  background: var(--bg-base);
+  background:
+    radial-gradient(1200px 600px at 20% -10%, rgba(77,141,255,0.06), transparent 60%),
+    var(--bg-base);
   color: var(--text-primary);
   font-family: var(--font-sans);
   font-size: 14px;
@@ -58,7 +73,7 @@ html, body {
 
 .sidebar {
   width: var(--sidebar-w);
-  background: var(--bg-surface);
+  background: linear-gradient(180deg, var(--bg-surface), var(--bg-base));
   border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
@@ -99,9 +114,18 @@ html, body {
 
 .nav-item:hover { background: var(--bg-card); color: var(--text-primary); }
 .nav-item.active {
-  background: var(--accent-glow);
+  background: var(--accent-soft);
   color: var(--accent);
-  box-shadow: inset 3px 0 0 var(--accent);
+  font-weight: 600;
+}
+/* The active rail sits outside the padding so it aligns with the sidebar edge,
+   which reads as a selected channel rather than a highlighted row. */
+.nav-item.active::before {
+  content: '';
+  position: absolute; left: -8px; top: 6px; bottom: 6px;
+  width: 3px; border-radius: 0 3px 3px 0;
+  background: var(--accent);
+  box-shadow: 0 0 12px var(--accent-glow);
 }
 
 .nav-item .badge {
@@ -129,7 +153,8 @@ html, body {
 
 .topbar {
   height: var(--header-h);
-  background: var(--bg-surface);
+  background: rgba(13,19,32,0.85);
+  backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--border);
   display: flex;
   align-items: center;
@@ -138,21 +163,29 @@ html, body {
   flex-shrink: 0;
 }
 
-.topbar-title { font-size: 15px; font-weight: 600; }
+.topbar-title { font-size: 15px; font-weight: 600; letter-spacing: -0.01em; }
 .topbar-right { display: flex; align-items: center; gap: 12px; }
 
 .live-indicator {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  font-weight: 600;
+  gap: 7px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
   color: var(--green);
-  padding: 4px 10px;
-  background: rgba(34,197,94,0.1);
-  border: 1px solid rgba(34,197,94,0.3);
+  padding: 5px 11px;
+  background: var(--green-soft);
+  border: 1px solid rgba(47,212,139,0.32);
   border-radius: 99px;
+  transition: all 0.2s var(--ease);
 }
+.live-indicator.disconnected {
+  color: var(--yellow);
+  background: var(--yellow-soft);
+  border-color: rgba(245,179,66,0.32);
+}
+.live-indicator.disconnected .pulse-dot { background: var(--yellow); }
 
 .pulse-dot {
   width: 6px; height: 6px;
@@ -171,10 +204,12 @@ html, body {
 
 /* ── Cards ── */
 .card {
-  background: var(--bg-card);
+  background: linear-gradient(180deg, var(--bg-card), var(--bg-surface));
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  padding: 16px;
+  padding: 18px;
+  box-shadow: var(--shadow);
+  position: relative;
 }
 
 .card-title {
@@ -190,17 +225,42 @@ html, body {
 .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 20px; }
 
 .stat-card {
-  background: var(--bg-card);
+  background: linear-gradient(180deg, var(--bg-card), var(--bg-surface));
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  padding: 16px;
+  padding: 16px 18px;
   display: flex;
   flex-direction: column;
   gap: 6px;
+  box-shadow: var(--shadow);
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.18s var(--ease), border-color 0.18s var(--ease);
 }
 
+/* A hairline of the metric's own colour along the top edge. This is the single
+   cheapest change that makes a row of numbers read as a control panel. */
+.stat-card::before {
+  content: '';
+  position: absolute; inset: 0 0 auto 0; height: 2px;
+  background: var(--border-strong);
+  opacity: 0.9;
+}
+.stat-card:has(.stat-value.blue)::before   { background: var(--accent); }
+.stat-card:has(.stat-value.green)::before  { background: var(--green); }
+.stat-card:has(.stat-value.red)::before    { background: var(--red); }
+.stat-card:has(.stat-value.yellow)::before { background: var(--yellow); }
+
+.stat-card:hover { transform: translateY(-2px); border-color: var(--border-light); }
+
 .stat-label { font-size: 11px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.6px; font-weight: 600; }
-.stat-value { font-size: 28px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.stat-value {
+  font-size: 32px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
 .stat-value.green { color: var(--green); }
 .stat-value.red { color: var(--red); }
 .stat-value.blue { color: var(--accent); }
@@ -223,19 +283,31 @@ html, body {
   white-space: nowrap;
 }
 
-.btn-primary { background: var(--accent); color: #fff; }
-.btn-primary:hover { background: var(--accent-dim); box-shadow: var(--glow); }
-.btn-ghost { background: transparent; border-color: var(--border-light); color: var(--text-secondary); }
-.btn-ghost:hover { background: var(--bg-card); color: var(--text-primary); }
+.btn-primary {
+  background: linear-gradient(180deg, var(--accent), var(--accent-dim));
+  color: #fff;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.15);
+}
+.btn-primary:hover { filter: brightness(1.08); box-shadow: var(--glow); }
+.btn-primary:active { transform: translateY(1px); filter: brightness(0.95); }
+.btn-ghost { background: var(--bg-card); border-color: var(--border); color: var(--text-secondary); }
+.btn-ghost:hover { background: var(--bg-raised); border-color: var(--border-light); color: var(--text-primary); }
+.btn-ghost:active { transform: translateY(1px); }
 .btn-danger { background: var(--red); color: #fff; }
 .btn-danger:hover { opacity: 0.85; }
 .btn-success { background: var(--green); color: #fff; }
-.btn-sm { padding: 4px 10px; font-size: 12px; }
+.btn-sm { padding: 5px 10px; font-size: 12px; }
+
+.btn:focus-visible, .input:focus-visible, .nav-item:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
 
 /* ── Inputs ── */
 .input, select.input, textarea.input {
   background: var(--bg-input);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-light);
   border-radius: var(--radius);
   color: var(--text-primary);
   font-family: var(--font-sans);
@@ -751,3 +823,99 @@ tr:last-child td { border-bottom: none; }
   content-visibility: auto;
   contain-intrinsic-size: auto 84px;
 }
+
+
+/* ── Empty states ────────────────────────────────────────────────
+   Plate Search and the hourly chart both spend most of their life empty,
+   and an empty screen is the first thing a reviewer sees. An empty state
+   that explains itself and offers the next action reads as a finished
+   product; a blank rectangle reads as an unfinished one. */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 56px 24px;
+  text-align: center;
+  min-height: 280px;
+}
+
+.empty-state-icon {
+  width: 56px; height: 56px;
+  display: grid; place-items: center;
+  border-radius: 16px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border-light);
+  color: var(--text-muted);
+  box-shadow: var(--shadow);
+}
+
+.empty-state-title { font-size: 15px; font-weight: 600; color: var(--text-primary); }
+.empty-state-body { font-size: 13px; color: var(--text-secondary); max-width: 420px; line-height: 1.6; }
+
+.empty-state-hints { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 4px; }
+.empty-hint {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  padding: 5px 10px;
+  border-radius: 6px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border-light);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s var(--ease);
+}
+.empty-hint:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+
+/* ── Section heading: one shared page header instead of ad-hoc inline styles ── */
+.page-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+.page-head h1 { font-size: 21px; font-weight: 700; letter-spacing: -0.02em; }
+.page-head .page-sub { font-size: 12.5px; color: var(--text-secondary); margin-top: 3px; }
+.page-head-actions { display: flex; gap: 8px; flex-shrink: 0; }
+
+/* Respect a reader who has asked the system to stop moving things. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ── System status panel ───────────────────────────────────────── */
+.status-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 2px;
+  background: var(--border);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.status-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 13px 15px;
+  background: var(--bg-card);
+}
+
+.status-dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  margin-top: 5px;
+  flex-shrink: 0;
+}
+.status-dot.ok    { background: var(--green); box-shadow: 0 0 8px rgba(47,212,139,0.6); }
+.status-dot.warn  { background: var(--yellow); box-shadow: 0 0 8px rgba(245,179,66,0.6); }
+.status-dot.alert { background: var(--red);   box-shadow: 0 0 8px rgba(255,92,92,0.6); }
+
+.status-row-label { font-size: 12.5px; font-weight: 600; color: var(--text-primary); }
+.status-row-value { font-size: 11.5px; color: var(--text-secondary); margin-top: 2px; line-height: 1.45; }

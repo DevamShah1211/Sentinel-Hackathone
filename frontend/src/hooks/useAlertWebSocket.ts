@@ -29,6 +29,12 @@ export function useAlertWebSocket() {
     const backoff = useRef(2000)
 
     const connect = useCallback(() => {
+        // React's development double-mount tears the first socket down while it is
+        // still handshaking, which fires onclose and starts the backoff timer. The
+        // indicator then sat on CONNECTING for several seconds on every page load.
+        // Reusing a socket that is already open or opening avoids that entirely.
+        const existing = ws.current?.readyState
+        if (existing === WebSocket.OPEN || existing === WebSocket.CONNECTING) return
         ws.current = new WebSocket(WS_URL)
 
         ws.current.onopen = () => {
@@ -69,7 +75,10 @@ export function useAlertWebSocket() {
         return () => {
             clearInterval(ping)
             clearTimeout(reconnectTimer.current)
-            ws.current?.close()
+            // Only close a socket that finished opening. Closing one mid-handshake
+            // is what produced "WebSocket is closed before the connection is
+            // established" twice on every load.
+            if (ws.current?.readyState === WebSocket.OPEN) ws.current.close()
         }
     }, [connect])
 

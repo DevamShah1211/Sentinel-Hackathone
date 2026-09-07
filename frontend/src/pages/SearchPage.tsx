@@ -5,6 +5,10 @@ import {
     downloadReport, getPlateRoute, getVehicleDetails, saveBlob, searchDetections,
 } from '../api/client'
 
+// The seeded demonstration vehicles. Clicking one always returns sightings, so a
+// reviewer meeting this page for the first time is one click from seeing it work.
+const EXAMPLE_PLATES = ['GJ99AB1234', 'GJ98CD5678', 'MH99DE1433'] as const
+
 interface VehicleDetails {
     registration_number: string; owner_name: string; vehicle_class: string
     maker_model: string; fuel_type: string; colour: string
@@ -156,16 +160,21 @@ export default function SearchPage() {
     const [vehicle, setVehicle] = useState<VehicleDetails | null>(null)
     const [vehicleLoading, setVehicleLoading] = useState(false)
 
-    const handleSearch = useCallback(async () => {
-        if (!query.trim()) return
+    // Takes an optional plate so the example chips can search immediately.
+    // Reading `query` from the closure would use the value from before setQuery.
+    const handleSearch = useCallback(async (plate?: string) => {
+        const term = (plate ?? query).trim()
+        if (!term) return
+        if (plate) setQuery(plate)
         setLoading(true)
         setSearched(true)
         setVehicle(null)
+        setRoute(null)
         try {
             // actor/purpose/case_ref are recorded in the audit trail — access to
             // vehicle movement data is always attributable.
             const data = await searchDetections({
-                plate: query.trim(), fuzzy, limit: 100,
+                plate: term, fuzzy, limit: 100,
                 actor: 'operator', purpose: purpose || 'investigation',
                 case_ref: caseRef || undefined,
             })
@@ -230,7 +239,7 @@ export default function SearchPage() {
                     <input type="checkbox" checked={fuzzy} onChange={e => setFuzzy(e.target.checked)} />
                     Fuzzy match
                 </label>
-                <button className="btn btn-primary" onClick={handleSearch} disabled={loading}>
+                <button className="btn btn-primary" onClick={() => handleSearch()} disabled={loading}>
                     {loading ? <div className="spinner" /> : <Search size={14} />}
                     Search
                 </button>
@@ -272,9 +281,41 @@ export default function SearchPage() {
 
             {!loading && searched && results.length === 0 && (
                 <div className="empty-state">
-                    <Search size={40} />
-                    <p>No detections found for "<strong>{query}</strong>"</p>
-                    <p style={{ fontSize: 12 }}>Try enabling fuzzy match or searching a partial plate</p>
+                    <div className="empty-state-icon"><Search size={24} /></div>
+                    <div className="empty-state-title">No sightings of {query}</div>
+                    <div className="empty-state-body">
+                        The index holds no detection matching this plate. Fuzzy match tolerates a
+                        single OCR error, so a partial plate often finds a vehicle an exact search misses.
+                    </div>
+                    <div className="empty-state-hints">
+                        {EXAMPLE_PLATES.map(p => (
+                            <button key={p} className="empty-hint" onClick={() => handleSearch(p)}>
+                                {p}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            {/* The screen before anything is typed. A reviewer opening Plate Search
+                for the first time should learn what it does and be one click from
+                seeing it work, rather than meeting an empty page. */}
+            {!loading && !searched && (
+                <div className="empty-state">
+                    <div className="empty-state-icon"><Search size={24} /></div>
+                    <div className="empty-state-title">Search the detection index</div>
+                    <div className="empty-state-body">
+                        Enter a full or partial registration to see every camera that recorded it,
+                        in time order, with the evidence crop and a reconstructed route. Fuzzy match
+                        tolerates OCR errors. Every search is written to the audit trail.
+                    </div>
+                    <div className="empty-state-hints">
+                        {EXAMPLE_PLATES.map(p => (
+                            <button key={p} className="empty-hint" onClick={() => handleSearch(p)}>
+                                {p}
+                            </button>
+                        ))}
+                    </div>
                 </div>
             )}
 
