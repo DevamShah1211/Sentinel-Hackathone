@@ -159,6 +159,40 @@ it as `partial: true`, the search page labels it *PARTIAL · UNVERIFIED*, the
 pg_trgm index finds it from the true plate, and the watchlist check skips it.
 Every character stored is the OCR's own; the only decision added is to keep it.
 
+### cam14 — Delight RLVD, twice the detail and still short
+
+cam14 is a red-light violation camera at the Delight junction, so it is aimed
+closer to the stop line than the wide-area PTZs. Probing it directly, at
+1920x1080:
+
+| Quantity | cam12 (toll plaza) | cam14 (Delight RLVD) |
+|---|---|---|
+| Plate box width | ~55 px | **80-81 px** |
+| Pixels per character | ~5 | **~10** |
+| Reads in a 120 s window | 25 (one vehicle) | 6 (three vehicles) |
+| Fully valid reads | 0 | 0 |
+
+The plate the detector found belongs to the white car stopped at the line, and
+the saved crop is legible to a human as approximately `GJ06BA1316`. The OCR
+returned `GI65AA33` and `GI63AA31` — eight characters for a ten-character plate,
+with the state code `GJ` misread as `GI` every time.
+
+Two things follow. First, this is **twice the detail of cam12** and the read is
+still not recoverable, which puts a useful number on the requirement: ten
+pixels per character is not enough either. Published ANPR guidance asks for
+roughly 20 to 30, and these measurements agree with it from below.
+
+Second, upscaling again bought nothing. Cropping to the lower part of the frame
+where the vehicles queue and upscaling that region by 2, 2.5, 3 and 4 produced
+no valid read at any factor; at x2.5 and x3 the detector stopped finding the
+plate at all. The information is absent from the capture, not hidden by the
+tiling.
+
+A second probe of the same camera four minutes later returned **zero
+detections across 182 usable frames** — the junction had emptied. Yield on these
+cameras is governed by whether a vehicle happens to be near the camera, which
+is why a demonstration cannot depend on catching one live.
+
 ### What this changes about the conclusion
 
 It sharpens it. The earlier statement — that the limit is camera siting rather

@@ -439,6 +439,27 @@ The rejection behaviour is itself a result. A system that had reported `AEVETEE`
 as a vehicle would have produced impressive-looking detections and a worthless
 index.
 
+**A measured siting requirement.** Probing a second camera puts a number on
+this rather than leaving it as a judgement. cam14 is the Delight red-light
+violation camera, aimed far closer to the stop line than the PTZ overviews:
+
+| | cam12 (toll plaza) | cam14 (Delight RLVD) |
+|---|---|---|
+| Plate width in frame | ~55 px | ~80 px |
+| Pixels per character | ~5 | ~10 |
+| Fully valid reads | 0 | 0 |
+
+cam14 carries twice the detail of cam12 and still yields nothing the grammar
+will accept: the state code `GJ` is read as `GI` on every frame, and eight
+characters are returned for a ten-character plate. Cropping to the queueing
+area and upscaling by 2, 2.5, 3 and 4 recovers no valid read at any factor.
+
+So the requirement is not "a bit more resolution". Two independent cameras
+bracket it: 5 px per character fails, 10 px per character fails, and the
+synthetic clip at 15-20 px per character reads 6/6. That is consistent with
+published ANPR guidance of roughly 20-30 px per character, and it is the number
+that belongs in a procurement specification for statewide deployment.
+
 ### 6.6 Model selection note
 
 `max_plate_slots` in `fast-plate-ocr` decides whether a 10-character Indian plate
