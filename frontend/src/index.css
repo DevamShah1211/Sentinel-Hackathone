@@ -393,15 +393,35 @@ tr:last-child td { border-bottom: none; }
 .status-resolved { color: var(--green); }
 
 /* ── Video Wall ── */
+/* Rows are sized by the tiles' own 16:9 aspect rather than by dividing the
+   viewport height. Forcing nine tiles into one screen made every tile letterboxed
+   and unreadable; now each tile keeps its shape and the wall scrolls, which is
+   also what lets the grid go wide on a large monitor and narrow on a laptop. */
 .video-wall-grid {
   display: grid;
-  gap: 4px;
+  gap: 6px;
   width: 100%;
-  height: 100%;
+  align-content: start;
 }
-.grid-3x3 { grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 1fr); }
-.grid-2x2 { grid-template-columns: repeat(2, 1fr); grid-template-rows: repeat(2, 1fr); }
-.grid-1x1 { grid-template-columns: 1fr; grid-template-rows: 1fr; }
+.video-wall-grid .video-tile { aspect-ratio: 16 / 9; }
+
+.grid-3x3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.grid-2x2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.grid-1x1 { grid-template-columns: minmax(0, 1fr); }
+
+/* Maximised and 1x1 fill the viewport instead of scrolling: one stream should
+   use the screen it has. */
+.video-wall-grid.grid-1x1 { height: 100%; align-content: stretch; }
+.video-wall-grid.grid-1x1 .video-tile { aspect-ratio: auto; height: 100%; }
+
+/* On a narrow screen a 3-up wall is unreadable, so it steps down rather than
+   shrinking each tile past the point of usefulness. */
+@media (max-width: 1100px) {
+  .grid-3x3 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 720px) {
+  .grid-3x3, .grid-2x2 { grid-template-columns: minmax(0, 1fr); }
+}
 
 .video-tile {
   background: #000;
@@ -1024,3 +1044,388 @@ tr:last-child td { border-bottom: none; }
   content: ''; width: 5px; height: 5px; border-radius: 50%;
   background: var(--green); animation: pulse 1.6s infinite;
 }
+
+/* ── Plate detail drawer ─────────────────────────────────────────
+   Opened from alerts, the watchlist and search. A slide-over rather than a
+   modal so the list behind stays legible: an investigator comparing two
+   records should not lose their place in the list to see one of them. */
+.pd-scrim {
+  position: fixed; inset: 0;
+  background: rgba(4,7,13,0.62);
+  backdrop-filter: blur(2px);
+  z-index: 900;
+  animation: pd-fade 0.16s var(--ease);
+}
+
+.pd-drawer {
+  position: fixed; top: 0; right: 0; bottom: 0;
+  width: min(560px, 94vw);
+  background: var(--bg-surface);
+  border-left: 1px solid var(--border-light);
+  box-shadow: var(--shadow-lg);
+  z-index: 901;
+  display: flex;
+  flex-direction: column;
+  animation: pd-slide 0.22s var(--ease);
+}
+
+@keyframes pd-fade { from { opacity: 0 } to { opacity: 1 } }
+@keyframes pd-slide { from { transform: translateX(24px); opacity: 0 } to { transform: none; opacity: 1 } }
+
+.pd-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-card);
+  flex-shrink: 0;
+}
+
+.pd-plate {
+  font-family: var(--font-mono);
+  font-size: 21px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  color: var(--text-primary);
+}
+.pd-plate-sub { font-size: 12px; color: var(--text-secondary); margin-top: 3px; }
+
+.pd-body { flex: 1; overflow-y: auto; padding: 16px 18px 28px; }
+
+.pd-section { margin-bottom: 22px; }
+.pd-section-title {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 11px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--text-muted);
+  margin-bottom: 10px;
+}
+
+.pd-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px 16px;
+}
+.pd-field-label {
+  font-size: 10px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+.pd-field-value { font-size: 13px; color: var(--text-primary); margin-top: 2px; line-height: 1.4; }
+
+.pd-crop {
+  width: 100%;
+  max-height: 150px;
+  object-fit: contain;
+  background: #0a0f1a;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius);
+  padding: 6px;
+}
+
+.pd-warn {
+  display: flex; align-items: flex-start; gap: 8px;
+  padding: 9px 11px;
+  border-radius: var(--radius);
+  background: var(--yellow-soft);
+  border: 1px solid rgba(245,179,66,0.32);
+  color: var(--yellow);
+  font-size: 12px;
+  line-height: 1.5;
+  margin-bottom: 12px;
+}
+.pd-warn svg { flex-shrink: 0; margin-top: 1px; }
+
+.pd-empty { font-size: 12.5px; color: var(--text-muted); padding: 6px 0; }
+.pd-note { font-size: 11.5px; color: var(--text-muted); line-height: 1.55; }
+
+.pd-timeline { list-style: none; display: flex; flex-direction: column; gap: 2px; }
+.pd-timeline-item {
+  display: flex; align-items: flex-start; gap: 11px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+.pd-timeline-item:last-child { border-bottom: none; }
+.pd-timeline-dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--accent);
+  margin-top: 5px; flex-shrink: 0;
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.pd-timeline-cam { font-size: 13px; font-weight: 600; color: var(--text-primary); display: flex; align-items: center; gap: 7px; }
+.pd-timeline-meta { font-size: 11.5px; color: var(--text-secondary); margin-top: 2px; }
+.pd-timeline-addr { font-size: 11px; color: var(--text-muted); margin-top: 1px; }
+.pd-timeline-conf {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--green);
+  flex-shrink: 0;
+}
+
+.pd-partial-tag {
+  font-size: 9px; font-weight: 700; letter-spacing: 0.05em;
+  padding: 2px 5px; border-radius: 3px;
+  background: var(--yellow-soft); color: var(--yellow);
+  border: 1px solid rgba(245,179,66,0.4);
+}
+
+/* Rows that open a detail panel need to say so before they are clicked. */
+.is-clickable { cursor: pointer; }
+tr.is-clickable:hover { background: var(--bg-raised); }
+.alert-item.is-clickable { transition: border-color 0.15s var(--ease), transform 0.15s var(--ease); }
+.alert-item.is-clickable:hover { border-color: var(--border-strong); transform: translateX(2px); }
+.is-clickable:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+/* ── Video wall camera search ────────────────────────────────────
+   The wall shows at most nine of thirty cameras. Reaching the other twenty-one
+   meant clicking a tile and filtering inside it, which nobody discovers. */
+.wall-search {
+  position: relative;
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 10px;
+  min-width: 300px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius);
+  color: var(--text-muted);
+}
+.wall-search:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.wall-search input {
+  flex: 1;
+  background: none; border: none; outline: none;
+  color: var(--text-primary);
+  font-size: 12.5px;
+  font-family: inherit;
+  min-width: 0;
+}
+.wall-search input::placeholder { color: var(--text-muted); }
+.wall-search-clear {
+  background: none; border: none; cursor: pointer;
+  color: var(--text-muted); display: grid; place-items: center; padding: 2px;
+}
+.wall-search-clear:hover { color: var(--text-primary); }
+
+.wall-search-results {
+  position: absolute;
+  top: calc(100% + 6px); left: 0; right: 0;
+  background: var(--bg-raised);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+  z-index: 40;
+  max-height: 320px;
+  overflow-y: auto;
+}
+.wall-search-row {
+  display: flex; align-items: baseline; gap: 8px;
+  width: 100%; padding: 9px 12px;
+  background: none; border: none; cursor: pointer;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+}
+.wall-search-row:last-child { border-bottom: none; }
+.wall-search-row:hover { background: var(--accent-soft); }
+.wall-search-name { font-size: 12.5px; font-weight: 600; color: var(--text-primary); }
+.wall-search-dept { font-size: 11px; color: var(--text-muted); margin-left: auto; }
+.wall-search-empty { padding: 11px 12px; font-size: 12px; color: var(--text-muted); }
+
+/* ── Dashboard operations row ────────────────────────────────────
+   A hero stream beside the two things an operator reacts to. Below 1200px the
+   side panels drop under the stream rather than squeezing it, because a
+   half-width video is no longer useful for identifying anything. */
+.ops-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.55fr) minmax(300px, 1fr);
+  gap: 16px;
+  margin-bottom: 16px;
+}
+@media (max-width: 1200px) {
+  .ops-row { grid-template-columns: minmax(0, 1fr); }
+}
+
+.ops-hero { display: flex; flex-direction: column; gap: 12px; }
+
+.ops-hero-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.ops-hero-controls { display: flex; align-items: center; gap: 8px; }
+
+.ops-hero-stage {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  background: #000;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.ops-hero-meta {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 10px 16px;
+}
+.ops-hero-meta span {
+  display: block;
+  font-size: 10px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+.ops-hero-meta strong { font-size: 12.5px; font-weight: 600; color: var(--text-primary); }
+
+.ops-side { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.ops-panel { display: flex; flex-direction: column; }
+
+.ops-count {
+  margin-left: 8px;
+  padding: 2px 7px;
+  border-radius: 99px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  background: var(--red-soft);
+  color: var(--red);
+  border: 1px solid rgba(255,92,92,0.3);
+}
+
+.ops-list { display: flex; flex-direction: column; }
+
+.ops-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 4px;
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s var(--ease);
+}
+.ops-item:last-child { border-bottom: none; }
+.ops-item:hover { background: var(--accent-soft); }
+
+.ops-sev { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; background: var(--text-muted); }
+.ops-sev.sev-critical { background: var(--red);    box-shadow: 0 0 8px var(--red-glow); }
+.ops-sev.sev-high     { background: #ff8c42; }
+.ops-sev.sev-medium   { background: var(--yellow); }
+.ops-sev.sev-low      { background: var(--text-muted); }
+
+.ops-item-main { min-width: 0; flex: 1; }
+.ops-item-title {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  color: var(--text-primary);
+  display: flex; align-items: center; gap: 6px;
+}
+.ops-item-sub {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.ops-item-time {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+.ops-item-crop {
+  width: 46px; height: 20px;
+  object-fit: contain;
+  background: #0a0f1a;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.ops-more {
+  margin-top: 10px;
+  padding: 7px 0 0;
+  background: none;
+  border: none;
+  border-top: 1px solid var(--border);
+  color: var(--accent);
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+}
+.ops-more:hover { color: var(--text-primary); }
+
+/* ── Camera chips ────────────────────────────────────────────────
+   All thirty cameras, one click from the hero view. */
+.cam-chips {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 8px;
+  max-height: 260px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.cam-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 11px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.15s var(--ease);
+  min-width: 0;
+}
+.cam-chip:hover { border-color: var(--border-strong); transform: translateY(-1px); }
+.cam-chip.is-active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  box-shadow: 0 0 0 1px var(--accent-glow);
+}
+
+.cam-chip-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--text-muted); flex-shrink: 0;
+}
+.cam-chip-dot.live { background: var(--green); box-shadow: 0 0 6px rgba(47,212,139,0.7); }
+
+.cam-chip-name {
+  font-size: 12px; font-weight: 600; color: var(--text-primary);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.cam-chip-dept {
+  font-size: 10px; color: var(--text-muted);
+  margin-left: auto; flex-shrink: 0;
+}
+
+.dash-charts { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px; }
+@media (max-width: 980px) { .dash-charts { grid-template-columns: 1fr; } }
+
+.top-plate-row {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  background: none; border: none; cursor: pointer;
+  padding: 3px 4px; border-radius: 5px;
+  transition: background 0.15s var(--ease);
+}
+.top-plate-row:hover { background: var(--accent-soft); }
+
+.pd-timeline-dot.is-flagged { background: var(--red); box-shadow: 0 0 0 3px var(--red-soft); }
+.pd-timeline-speed {
+  display: flex; align-items: center; gap: 5px;
+  font-size: 11px; color: var(--text-muted); margin-top: 3px;
+}
+.pd-timeline-speed.is-flagged { color: var(--red); font-weight: 600; }

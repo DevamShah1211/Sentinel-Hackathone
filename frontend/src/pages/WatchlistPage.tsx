@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Plus, Shield, Trash2, Upload } from 'lucide-react'
 import { getWatchlist, addToWatchlist, removeFromWatchlist, bulkImportWatchlist } from '../api/client'
+import PlateDetailDrawer from '../components/PlateDetailDrawer'
 
 interface WatchlistEntry {
     id: string; plate_text: string; entity_type: string; reason: string;
@@ -15,6 +16,7 @@ const SEV_PILL: Record<string, string> = { low: 'pill-gray', medium: 'pill-blue'
 export default function WatchlistPage() {
     const [entries, setEntries] = useState<WatchlistEntry[]>([])
     const [loading, setLoading] = useState(true)
+    const [open, setOpen] = useState<WatchlistEntry | null>(null)
     const [form, setForm] = useState({ plate_text: '', reason: 'wanted', severity: 'high', case_ref: '', description: '' })
     const [adding, setAdding] = useState(false)
     const [showForm, setShowForm] = useState(false)
@@ -142,9 +144,13 @@ export default function WatchlistPage() {
                 : entries.length === 0
                     ? (
                         <div className="empty-state">
-                            <Shield size={40} />
-                            <p>No watchlist entries yet</p>
-                            <p style={{ fontSize: 12 }}>Add plates or bulk import a CSV</p>
+                            <div className="empty-state-icon"><Shield size={24} /></div>
+                            <div className="empty-state-title">No registrations on the watchlist</div>
+                            <div className="empty-state-body">
+                                Add a plate above, or bulk import a CSV. Any detection matching an
+                                active entry raises an alert immediately, and the match is recorded
+                                with the operator who armed it.
+                            </div>
                         </div>
                     )
                     : (
@@ -165,7 +171,12 @@ export default function WatchlistPage() {
                                     </thead>
                                     <tbody>
                                         {entries.map(e => (
-                                            <tr key={e.id}>
+                                            <tr
+                                                key={e.id}
+                                                className="is-clickable"
+                                                title="Open full vehicle detail"
+                                                onClick={() => setOpen(e)}
+                                            >
                                                 <td><span className="plate-chip">{e.plate_text}</span></td>
                                                 <td style={{ textTransform: 'capitalize' }}>{e.reason}</td>
                                                 <td><span className={`badge-pill ${SEV_PILL[e.severity] || 'pill-gray'}`}>{e.severity}</span></td>
@@ -180,7 +191,7 @@ export default function WatchlistPage() {
                                                         : <span className="badge-pill pill-gray">Inactive</span>
                                                     }
                                                 </td>
-                                                <td>
+                                                <td onClick={ev => ev.stopPropagation()}>
                                                     {e.active && (
                                                         <button className="btn btn-ghost btn-sm" style={{ color: 'var(--red)' }} onClick={() => handleRemove(e.id)}>
                                                             <Trash2 size={12} />
@@ -195,6 +206,20 @@ export default function WatchlistPage() {
                         </div>
                     )
             }
+            <PlateDetailDrawer
+                plate={open?.plate_text ?? null}
+                onClose={() => setOpen(null)}
+                context={open ? [
+                    { label: 'Reason', value: open.reason },
+                    { label: 'Severity', value: open.severity },
+                    { label: 'Case reference', value: open.case_ref || '—' },
+                    { label: 'Added by', value: open.added_by || '—' },
+                    { label: 'Added on', value: new Date(open.created_at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) + ' IST' },
+                    { label: 'Entry status', value: open.active ? 'Active — alerts armed' : 'Inactive' },
+                    { label: 'Entity type', value: open.entity_type || '—' },
+                    { label: 'Description', value: open.description || '—' },
+                ] : undefined}
+            />
         </div>
     )
 }

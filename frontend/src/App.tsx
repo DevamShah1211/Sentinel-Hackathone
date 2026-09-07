@@ -113,7 +113,7 @@ function Shell({ user, onSignOut }: { user: AuthUser | null; onSignOut: () => vo
             <div className="main-area">
                 <Topbar status={status} user={user} onSignOut={onSignOut} />
                 <Routes>
-                    <Route path="/" element={<DashboardPage />} />
+                    <Route path="/" element={<DashboardPage wsAlerts={alerts} />} />
                     <Route path="/map" element={<MapPage />} />
                     <Route path="/wall" element={<VideoWallPage />} />
                     <Route path="/search" element={<SearchPage />} />

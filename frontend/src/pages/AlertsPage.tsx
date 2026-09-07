@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Bell, Check, CheckCheck, RefreshCw } from 'lucide-react'
 import { getAlerts, acknowledgeAlert, resolveAlert } from '../api/client'
+import PlateDetailDrawer from '../components/PlateDetailDrawer'
 import type { LiveAlert } from '../hooks/useAlertWebSocket'
 
 interface AlertRecord {
@@ -16,10 +17,19 @@ function SeverityIcon({ sev }: { sev: string }) {
     return <span>{map[sev] || '⚪'}</span>
 }
 
-function AlertRow({ a, onAck, onResolve }: { a: AlertRecord; onAck: (id: string) => void; onResolve: (id: string) => void }) {
-    const sevClass = `sev-${a.severity}`
+function AlertRow({ a, onAck, onResolve, onOpen }: {
+    a: AlertRecord; onAck: (id: string) => void; onResolve: (id: string) => void
+    onOpen: (a: AlertRecord) => void
+}) {
     return (
-        <div className={`alert-item ${a.status}`}>
+        <div
+            className={`alert-item ${a.status} is-clickable`}
+            role="button"
+            tabIndex={0}
+            title="Open full vehicle detail"
+            onClick={() => onOpen(a)}
+            onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(a) } }}
+        >
             <div className={`alert-icon ${a.severity}`}>
                 <SeverityIcon sev={a.severity} />
             </div>
@@ -53,7 +63,7 @@ function AlertRow({ a, onAck, onResolve }: { a: AlertRecord; onAck: (id: string)
                     }}
                 />
             )}
-            <div className="alert-actions">
+            <div className="alert-actions" onClick={e => e.stopPropagation()}>
                 {a.status === 'new' && (
                     <button className="btn btn-ghost btn-sm" onClick={() => onAck(a.id)} title="Acknowledge">
                         <Check size={12} />
@@ -78,6 +88,7 @@ export default function AlertsPage({ wsAlerts }: Props) {
     const [dbAlerts, setDbAlerts] = useState<AlertRecord[]>([])
     const [loading, setLoading] = useState(true)
     const [statusFilter, setStatusFilter] = useState<string>('all')
+    const [open, setOpen] = useState<AlertRecord | null>(null)
 
     const load = async () => {
         setLoading(true)
@@ -107,11 +118,11 @@ export default function AlertsPage({ wsAlerts }: Props) {
 
     return (
         <div className="page-content">
-            <div className="section-header">
+            <div className="page-head">
                 <div>
-                    <h1 style={{ fontSize: 20, fontWeight: 700 }}>Live Alerts</h1>
-                    <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>
-                        Real-time watchlist matches via WebSocket · Newest first
+                    <h1>Live Alerts</h1>
+                    <div className="page-sub">
+                        Watchlist matches, newest first · click any alert for full vehicle detail
                     </div>
                 </div>
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -138,19 +149,37 @@ export default function AlertsPage({ wsAlerts }: Props) {
                 : dbAlerts.length === 0
                     ? (
                         <div className="empty-state">
-                            <Bell size={40} />
-                            <p>No alerts yet</p>
-                            <p style={{ fontSize: 12 }}>Watchlist matches will appear here in real-time</p>
+                            <div className="empty-state-icon"><Bell size={24} /></div>
+                            <div className="empty-state-title">No alerts raised</div>
+                            <div className="empty-state-body">
+                                A watchlist entry that matches a detection raises an alert here within
+                                a second of the read, over the live socket. Add a registration on the
+                                Watchlist page to arm one.
+                            </div>
                         </div>
                     )
                     : (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                             {dbAlerts.map(a => (
-                                <AlertRow key={a.id} a={a} onAck={handleAck} onResolve={handleResolve} />
+                                <AlertRow key={a.id} a={a} onAck={handleAck} onResolve={handleResolve} onOpen={setOpen} />
                             ))}
                         </div>
                     )
             }
+            <PlateDetailDrawer
+                plate={open?.plate_text ?? null}
+                onClose={() => setOpen(null)}
+                context={open ? [
+                    { label: 'Reason', value: open.reason },
+                    { label: 'Severity', value: open.severity },
+                    { label: 'Match', value: `${open.match_type} · ${(open.score * 100).toFixed(0)}%` },
+                    { label: 'Case reference', value: open.case_ref || '—' },
+                    { label: 'Status', value: open.status },
+                    { label: 'Matched at', value: new Date(open.matched_at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) + ' IST' },
+                    { label: 'Camera', value: open.camera_name },
+                    { label: 'Acknowledged by', value: open.acknowledged_by || 'Not acknowledged' },
+                ] : undefined}
+            />
         </div>
     )
 }

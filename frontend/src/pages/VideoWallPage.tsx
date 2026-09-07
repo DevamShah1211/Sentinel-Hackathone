@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { LayoutGrid, Maximize2, Minimize2, RotateCw } from 'lucide-react'
+import { LayoutGrid, Maximize2, Minimize2, RotateCw, Search, X } from 'lucide-react'
 import { getCameras } from '../api/client'
 import LiveTile, { type StreamProfile, type TileState } from '../components/LiveTile'
 
@@ -155,6 +155,7 @@ export default function VideoWallPage() {
     const [slots, setSlots] = useState<Slot[]>(Array.from({ length: 9 }, () => ({ camera: null, isHero: false })))
     const [layout, setLayout] = useState<'3x3' | '2x2' | '1x1'>('2x2')
     const [maximised, setMaximised] = useState<number | null>(null)
+    const [search, setSearch] = useState('')
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
 
@@ -181,6 +182,19 @@ export default function VideoWallPage() {
         document.addEventListener('visibilitychange', onVisibility)
         return () => document.removeEventListener('visibilitychange', onVisibility)
     }, [])
+
+    // Searching all thirty cameras and picking one puts it in the first slot and
+    // maximises it, so finding a camera and watching it is a single action.
+    const matches = search.trim()
+        ? cameras.filter(c => `${c.name} ${c.department} ${c.native_id}`
+            .toLowerCase().includes(search.trim().toLowerCase())).slice(0, 8)
+        : []
+
+    const showCamera = (cam: Camera) => {
+        setSlots(prev => prev.map((s, i) => (i === 0 ? { ...s, camera: cam } : s)))
+        setMaximised(0)
+        setSearch('')
+    }
 
     const handleMaximise = (idx: number) => setMaximised(m => (m === idx ? null : idx))
     const handleCameraChange = (idx: number, cam: Camera | null) =>
@@ -214,8 +228,33 @@ export default function VideoWallPage() {
                         <Minimize2 size={12} /> Exit fullscreen
                     </button>
                 )}
-                <span style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--text-muted)' }}>
-                    {loading ? 'Loading cameras…' : `${cameras.filter(c => c.is_live).length} cameras live`}
+                <div className="wall-search">
+                    <Search size={13} aria-hidden="true" />
+                    <input
+                        value={search}
+                        onChange={e => setSearch(e.target.value)}
+                        placeholder="Search all cameras by name, area or id…"
+                        aria-label="Search cameras"
+                    />
+                    {search && (
+                        <button className="wall-search-clear" onClick={() => setSearch('')} aria-label="Clear search">
+                            <X size={12} />
+                        </button>
+                    )}
+                    {search && (
+                        <div className="wall-search-results">
+                            {matches.length === 0 && <div className="wall-search-empty">No camera matches.</div>}
+                            {matches.map(c => (
+                                <button key={c.id} className="wall-search-row" onClick={() => showCamera(c)}>
+                                    <span className="wall-search-name">{c.name}</span>
+                                    <span className="wall-search-dept">{c.department}</span>
+                                </button>
+                            ))}
+                        </div>
+                    )}
+                </div>
+                <span style={{ fontSize: 12, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                    {loading ? 'Loading cameras…' : `${cameras.filter(c => c.is_live).length} of ${cameras.length} live`}
                 </span>
             </div>
 
@@ -223,7 +262,10 @@ export default function VideoWallPage() {
                 <div style={{ padding: '10px 16px', color: 'var(--red)', fontSize: 13 }}>{error}</div>
             )}
 
-            <div style={{ flex: 1, padding: 4 }}>
+            <div style={{
+                flex: 1, padding: 6,
+                overflowY: maximised !== null || layout === '1x1' ? 'hidden' : 'auto',
+            }}>
                 <div
                     className={`video-wall-grid ${maximised !== null ? 'grid-1x1' : `grid-${layout}`}`}
                     style={{ height: '100%' }}
