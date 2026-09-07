@@ -5,6 +5,7 @@ Also provides sightings-to-route endpoint.
 """
 import logging
 from datetime import datetime, timedelta, timezone
+from functools import lru_cache
 from typing import Optional
 from uuid import UUID
 
@@ -59,6 +60,13 @@ async def snap_to_roads(coordinates: list[list[float]]) -> dict | None:
         return None
 
 
+@lru_cache(maxsize=2048)
+def _grammar(plate_text: str):
+    """Plate grammar for one registration, cached — search returns many rows."""
+    from app.plate_grammar import correct_plate
+    return correct_plate(plate_text)
+
+
 def _is_partial(raw_reads) -> bool:
     """A detection is partial when its worker tagged it so in the raw_reads metadata."""
     for entry in raw_reads or []:
@@ -83,6 +91,11 @@ class DetectionOut(BaseModel):
     # validation (typically too few pixels per character). Searchable for
     # investigators, shown as unverified, and never used for watchlist alerts.
     partial: bool = False
+    # The RTO district the registration belongs to, derived from the plate at
+    # read time rather than stored. It costs a dictionary lookup and it tells an
+    # investigator where a vehicle was registered, which the plate alone does not.
+    district: Optional[str] = None
+    rto_valid: bool = True
     # Joined camera fields
     camera_name: Optional[str] = None
     camera_department: Optional[str] = None
@@ -194,6 +207,8 @@ async def search_detections(
             tags=list(det.tags or []),
             notes=det.notes,
             partial=_is_partial(det.raw_reads),
+            district=_grammar(det.plate_text).district,
+            rto_valid=_grammar(det.plate_text).rto_valid,
             camera_name=row.camera_name,
             camera_department=row.camera_department,
             camera_lat=row.camera_lat,

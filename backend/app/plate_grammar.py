@@ -26,6 +26,8 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
+from app.rto_codes import district_name, rto_exists
+
 # Official RTO state and union-territory codes, plus BH (Bharat series).
 VALID_STATE_CODES: frozenset[str] = frozenset({
     "AN", "AP", "AR", "AS", "BR", "CG", "CH", "DD", "DL", "DN", "GA", "GJ",
@@ -91,6 +93,21 @@ SUBSTITUTION_COST: dict[tuple[str, str], float] = {
 }
 DEFAULT_SUBSTITUTION_COST = 0.5
 
+# Digit-to-digit confusions, used only when repairing an RTO district number.
+# These are shape collisions in the plate typeface, not general OCR noise.
+_DIGIT_CONFUSIONS: dict[str, tuple[str, ...]] = {
+    "0": ("8", "6", "9"),
+    "1": ("7", "4"),
+    "2": ("7", "3"),
+    "3": ("8", "9", "5", "2"),
+    "4": ("1", "9"),
+    "5": ("6", "8", "3"),
+    "6": ("5", "8", "0"),
+    "7": ("1", "2"),
+    "8": ("3", "6", "0", "9"),
+    "9": ("4", "8", "3", "0"),
+}
+
 
 def substitution_cost(before: str, after: str) -> float:
     """How much to distrust one character substitution. 0 = certain."""
@@ -136,6 +153,12 @@ class PlateResult:
     state_valid: bool    # the leading two letters are a real RTO code
     corrections: int     # how many characters grammar correction changed
     fmt: str             # standard | bharat | unknown
+    # Whether the RTO district number has actually been issued by that state,
+    # and the district it names when we know it. `rto_valid` is False only when
+    # we are confident the district does not exist — an unconfirmed state
+    # accepts anything, so this never rejects a real vehicle on a guess.
+    rto_valid: bool = True
+    district: str | None = None
 
 
 def normalise(text: str) -> str:
@@ -248,6 +271,67 @@ def _coerce_standard(plate: str) -> tuple[str, int]:
     return "".join(chars), changes
 
 
+def _repair_district(plate: str, changes: int) -> tuple[str, int]:
+    """
+    Rewrite an unissued RTO district onto the nearest real one. **Not used.**
+
+    The idea is seductive: `GJ88` was never issued and `GJ38` was, 3/8 is a
+    common confusion in this typeface, so surely the read is a misread `GJ38`.
+
+    Measurement says no. Run against the ground-truth clip it rewrote
+    `GJ96XY4455` to `GJ06XY4455` and `GJ97JV7219` to `GJ07JV7219` — two plates
+    every single frame had read correctly and unanimously — because 9 -> 0 lands
+    on a district that exists. Accuracy fell from 6/6 to 4/6 and produced two
+    false positives that looked entirely legitimate.
+
+    The flaw is that it decides from grammar alone, with no evidence from the
+    OCR that the character was actually uncertain. A registration substituted
+    for another registration is the worst failure this system can produce: it is
+    invisible, it looks correct, and it points an investigation at the wrong
+    vehicle.
+
+    Kept, unused, because the reasoning is worth preserving. If district repair
+    is ever revisited it must be driven by per-character confidence from the
+    reads themselves — the mechanism in `_try_runner_ups`, which only reconsiders
+    positions the OCR was genuinely unsure about.
+    """
+    m = _STANDARD.match(plate)
+    if not m:
+        return plate, changes
+
+    state, rto_text = m.group(1), m.group(2)
+    if rto_exists(state, int(rto_text)):
+        return plate, changes
+
+    from app.rto_codes import COMMON_GJ_DISTRICTS
+
+    prefix_len = len(state) + len(rto_text)
+    candidates: list[tuple[float, bool, str]] = []
+
+    for i, ch in enumerate(rto_text):
+        for alt in _DIGIT_CONFUSIONS.get(ch, ()):
+            trial = rto_text[:i] + alt + rto_text[i + 1:]
+            value = int(trial)
+            if not rto_exists(state, value):
+                continue
+            cost = substitution_cost(ch, alt)
+            common = state == "GJ" and value in COMMON_GJ_DISTRICTS
+            candidates.append((cost, not common, trial))
+
+    if not candidates:
+        return plate, changes
+
+    candidates.sort()
+    best_cost, best_uncommon, best = candidates[0]
+    # A tie between two equally plausible districts is not a recognition.
+    if len(candidates) > 1:
+        second = candidates[1]
+        if (second[0], second[1]) == (best_cost, best_uncommon) and second[2] != best:
+            return plate, changes
+
+    return state + best + plate[prefix_len:], changes + 1
+
+
 def correct_plate(text: str) -> PlateResult:
     """
     Apply Indian plate grammar to one OCR string.
@@ -265,10 +349,18 @@ def correct_plate(text: str) -> PlateResult:
         return PlateResult(raw, raw, True, True, 0, "bharat")
 
     corrected, changes = _coerce_standard(raw)
+
+    # Note: an earlier version rewrote an unissued district onto the nearest
+    # real one here (GJ88 -> GJ38). Measurement rejected it — see the note on
+    # _repair_district. The district is reported, never silently corrected.
     m = _STANDARD.match(corrected)
     if m:
-        state = m.group(1)
-        return PlateResult(corrected, raw, True, state in VALID_STATE_CODES, changes, "standard")
+        state, rto = m.group(1), int(m.group(2))
+        return PlateResult(
+            corrected, raw, True, state in VALID_STATE_CODES, changes, "standard",
+            rto_valid=rto_exists(state, rto),
+            district=district_name(state, rto),
+        )
 
     # Not coercible — hand back the raw read rather than a fabricated one.
     return PlateResult(raw, raw, False, raw[:2] in VALID_STATE_CODES, 0, "unknown")
@@ -283,6 +375,28 @@ def correct_plate(text: str) -> PlateResult:
 IMPLAUSIBLE_LOCAL_STATES: frozenset[str] = frozenset({
     "LA", "LD", "AN", "SK", "MN", "MZ", "NL", "TR", "AR",
 })
+
+
+def read_quality(result: "PlateResult") -> int:
+    """
+    Rank a corrected read, best first, for choosing between candidates.
+
+    3  format valid, real state, real district  — a registration that could exist
+    2  format valid, real state, district not issued
+    1  format valid, state not recognised
+    0  not a valid format
+
+    This ranks; it does not reject. The synthetic demonstration plates use
+    deliberately unissuable districts (GJ-96 to 99) so they can never belong to a
+    real person, and they must still index. What the rank does is settle a
+    genuine ambiguity: given two readings of the same track, the one naming a
+    district that exists is the better answer.
+    """
+    if not result.valid:
+        return 0
+    if not result.state_valid:
+        return 1
+    return 3 if result.rto_valid else 2
 
 
 def plausible_in_gujarat(text: str) -> bool:
@@ -371,9 +485,70 @@ def vote(reads: list[PlateRead]) -> tuple[str, float, PlateResult] | None:
 
     voted = "".join(voted_chars)
     result = correct_plate(voted)
+
+    # Per-position voting picks each character independently, which can assemble
+    # a plate no individual read ever produced — and in particular one naming a
+    # district that was never issued. Where a position was close, try its runner
+    # up: if swapping a single weakly-held character yields a registration that
+    # could exist, that is the better reading of the same evidence.
+    if read_quality(result) < 3:
+        result = _try_runner_ups(scores, voted_chars, position_conf, result)
+
     # Confidence combines how strongly each position was agreed on with how many
     # independent reads backed the track.
     agreement = sum(position_conf) / len(position_conf) if position_conf else 0.0
     support = min(len(corrected) / 5.0, 1.0)
     confidence = round(agreement * (0.6 + 0.4 * support), 4)
     return result.text, confidence, result
+
+
+# A position held this strongly is settled; do not second-guess it. Measured on
+# the ground-truth clip: every correctly-read plate holds each position at 1.00,
+# so a ceiling well below that leaves unanimous reads untouched while still
+# allowing genuinely contested positions to be reconsidered.
+_RUNNER_UP_CEILING = 0.75
+
+# And the alternative must have real support behind it, not merely be second in
+# a field of one. A runner up carrying less than this share of the winner's
+# weight is noise.
+_RUNNER_UP_MIN_SHARE = 0.5
+
+
+def _try_runner_ups(scores: list[dict[str, float]], voted_chars: list[str],
+                    position_conf: list[float], current: "PlateResult") -> "PlateResult":
+    """
+    Swap one weakly-held position for its runner up, if that improves the read.
+
+    Only single-character alternatives are considered, only at positions the
+    vote was not confident about, and the result is kept only if it ranks
+    strictly better — a real district beating an unissued one, or a valid format
+    beating an invalid one. A tie changes nothing, so this can sharpen an
+    ambiguous read but can never overturn a decisive one.
+    """
+    best = current
+    best_rank = read_quality(current)
+
+    for pos, (chosen, conf) in enumerate(zip(voted_chars, position_conf)):
+        if conf >= _RUNNER_UP_CEILING or pos >= len(scores):
+            continue
+        alternatives = sorted(scores[pos].items(), key=lambda kv: -kv[1])
+        if len(alternatives) < 2:
+            continue                       # nothing disagreed; nothing to weigh
+        chosen_weight = scores[pos].get(chosen, 0.0)
+        for char, weight in alternatives[1:3]:
+            if char == chosen:
+                continue
+            # Only entertain an alternative that a meaningful share of the reads
+            # actually saw. Without this the rescue invents a character no frame
+            # supported, purely because it lands on a plausible district.
+            if weight < chosen_weight * _RUNNER_UP_MIN_SHARE:
+                continue
+            trial = voted_chars.copy()
+            trial[pos] = char
+            candidate = correct_plate("".join(trial))
+            rank = read_quality(candidate)
+            if rank > best_rank:
+                best, best_rank = candidate, rank
+                if best_rank == 3:
+                    return best
+    return best

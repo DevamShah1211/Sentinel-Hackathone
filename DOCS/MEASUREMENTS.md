@@ -268,6 +268,46 @@ would be worse, not better. The limit remains 5 and 10 pixels per character
 against the 20-30 that ANPR needs, and no post-processing recovers detail the
 sensor never captured.
 
+## 2d. Real RTO district data, and a correction that had to be reverted
+
+`app/rto_codes.py` records the district ranges each state has actually issued —
+Gujarat GJ-01 to GJ-39, Maharashtra to MH-50, Rajasthan to RJ-58 — with the
+thirty-nine Gujarat district names. A state whose range could not be confirmed
+accepts anything, so an incomplete table never rejects a real vehicle.
+
+**What it is used for.** Every detection now reports whether its district was
+ever issued and, for Gujarat, which district it names. When a track's reads
+genuinely disagree at one position, the reading that lands on a real district
+wins: reads split between `GJ88` and `GJ38` settle on GJ-38 Aravalli.
+
+**What it is not used for, and why.** The obvious next step is to rewrite an
+impossible district onto the nearest real one — `GJ88` becomes `GJ38`, since 3
+and 8 are a common confusion. It was implemented, measured, and removed.
+
+| | Recovered | False positives |
+|---|---|---|
+| With district rewriting | 4/6 | 2 |
+| Without | **6/6** | **0** |
+
+It rewrote `GJ96XY4455` to `GJ06XY4455` and `GJ97JV7219` to `GJ07JV7219`. Both
+had been read correctly and unanimously by every frame; both were "improved"
+into a different registration because 9 to 0 lands on a district that exists.
+
+The flaw is that it decides from grammar alone, with no evidence from the OCR
+that the character was ever uncertain. **Substituting one plausible registration
+for another is the worst failure this system can produce** — invisible, correct
+looking, and it points an investigation at the wrong vehicle.
+
+The function remains in the source, unused, with that reasoning recorded, and a
+test asserts a unanimous read is never rewritten. District knowledge is applied
+only where the reads themselves are undecided.
+
+| Benchmark | Result |
+|---|---|
+| Grammar layer, real captured strings | 24/24 |
+| End to end, ground-truth clip | 6/6, 0 false positives |
+| Unit tests | 85 |
+
 ## 3. Plate-grammar correction
 
     python -m pytest tests/test_plate_grammar.py

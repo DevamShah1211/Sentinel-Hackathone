@@ -204,3 +204,60 @@ class TestExtendedConfusions:
         for raw in ("GI65AA33", "GI63AA31", "KI484131"):
             result = correct_plate(raw)
             assert not (result.valid and result.state_valid), raw
+
+
+class TestRTODistricts:
+    """
+    Real RTO district data, and the line between using it and abusing it.
+
+    The table lets the recogniser report whether a district was ever issued and
+    resolve a genuinely contested position toward one that was. It must never
+    rewrite a character the reads agreed on.
+    """
+
+    def test_reports_real_districts(self):
+        result = correct_plate("GJ18CD5678")
+        assert result.rto_valid
+        assert result.district == "Gandhinagar"
+
+    def test_flags_unissued_districts(self):
+        """Gujarat issues GJ-01 to GJ-39; GJ-99 has never existed."""
+        result = correct_plate("GJ99AB1234")
+        assert result.valid and result.state_valid
+        assert not result.rto_valid
+
+    def test_unissued_district_still_indexes(self):
+        """
+        The demonstration plates deliberately use unissuable districts so they
+        cannot belong to a real person. Flagging them must not reject them.
+        """
+        result = correct_plate("GJ96XY4455")
+        assert result.valid and result.state_valid
+
+    def test_unrecognised_state_is_not_credited_with_a_district(self):
+        """`GG` is not a state, so its district cannot be real."""
+        result = correct_plate("GG02XX4499")
+        assert not result.state_valid
+        assert not result.rto_valid
+
+    def test_contested_position_resolves_to_a_real_district(self):
+        """
+        Reads split between GJ88 (never issued) and GJ38 (Aravalli) should
+        settle on the district that exists.
+        """
+        reads = [PlateRead(t, [0.6] * len(t)) for t in
+                 ("GJ88AB1234", "GJ38AB1234", "GJ88AB1234", "GJ38AB1234", "GJ38AB1234")]
+        plate, _, result = vote(reads)
+        assert plate == "GJ38AB1234"
+        assert result.district == "Aravalli"
+
+    def test_unanimous_read_is_never_rewritten(self):
+        """
+        The regression that made this rule necessary: every frame read
+        GJ96XY4455, and a district-repair step rewrote it to GJ06XY4455 because
+        that district exists. Substituting one registration for another is the
+        worst failure this system can produce.
+        """
+        reads = [PlateRead("GJ96XY4455", [1.0] * 10) for _ in range(6)]
+        plate, _, _ = vote(reads)
+        assert plate == "GJ96XY4455"

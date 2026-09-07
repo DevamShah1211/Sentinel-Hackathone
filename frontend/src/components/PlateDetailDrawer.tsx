@@ -20,6 +20,8 @@ import { getPlateRoute, getVehicleDetails, searchDetections } from '../api/clien
 export interface Sighting {
     id: string
     plate_text: string
+    district?: string
+    rto_valid?: boolean
     confidence: number
     detected_at: string
     crop_uri?: string
@@ -141,6 +143,9 @@ export default function PlateDetailDrawer({ plate, onClose, context }: {
     const anyPartial = sightings.some(s => s.partial)
     const partialIds = new Set(sightings.filter(s => s.partial).map(s => s.id))
     const flagged = route?.flagged_transitions ?? 0
+    // The RTO district the registration belongs to. The API derives it from the
+    // plate, so it is available on any sighting of this vehicle.
+    const registration = sightings.find(s => s.district || s.rto_valid === false)
     const topSpeed = ordered.reduce<number>((m, s) => Math.max(m, s.speed_kmh ?? 0), 0)
 
     return (
@@ -192,6 +197,12 @@ export default function PlateDetailDrawer({ plate, onClose, context }: {
                             <Field label="First seen" value={fmt(first?.detected_at)} />
                             <Field label="Last seen" value={fmt(last?.detected_at)} />
                             <Field label="Cameras" value={String(cameras.size)} />
+                            <Field
+                                label="Registered district"
+                                value={registration?.district
+                                    ?? (registration && registration.rto_valid === false
+                                        ? 'Not an issued RTO district' : undefined)}
+                            />
                             <Field
                                 label="Fastest leg"
                                 value={topSpeed > 0 ? `${topSpeed.toFixed(0)} km/h` : '—'}
