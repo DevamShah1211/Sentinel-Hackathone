@@ -217,6 +217,37 @@ class PlateDetector:
         with self._lock:
             return self._alpr.predict(image)
 
+    def read_crop(self, crop: np.ndarray) -> list[RawDetection]:
+        """
+        Recognise an already-cropped plate image.
+
+        Used by the refinement pass, which re-reads a track's best crop under
+        enhancement rather than re-reading more frames. The crop is upscaled to
+        the recogniser's working width first, for the same reason detect() does.
+        """
+        if crop is None or crop.size == 0:
+            return []
+        image = crop
+        if image.shape[1] < self.MIN_OCR_PLATE_WIDTH:
+            scale = self.MIN_OCR_PLATE_WIDTH / image.shape[1]
+            image = cv2.resize(image, None, fx=scale, fy=scale,
+                               interpolation=cv2.INTER_CUBIC)
+        out: list[RawDetection] = []
+        for result in self._predict(image) or []:
+            ocr = getattr(result, "ocr", None)
+            if ocr is None or not getattr(ocr, "text", None):
+                continue
+            text = ocr.text.replace("_", "").strip().upper()
+            if not text:
+                continue
+            confidences = list(getattr(ocr, "confidence", None) or [])
+            box = getattr(result, "detection", None)
+            bbox = (0, 0, image.shape[1], image.shape[0])
+            det_conf = float(getattr(box, "confidence", 0.0) or 0.0) if box else 0.0
+            out.append(RawDetection(text=text, char_confidences=confidences,
+                                    bbox=bbox, detector_confidence=det_conf))
+        return out
+
     # Below this width the OCR sees too few pixels per character. Crops are
     # upscaled to it before recognition; measured on rendered plates, a 160 px
     # crop upscaled to 440 px reads exactly as well as a natively large one.
@@ -388,9 +419,96 @@ class TrackManager:
         return len(self._tracks)
 
 
-def aggregate_track(track: Track) -> tuple[str, float, object] | None:
-    """Collapse a track's reads into one confidence-weighted plate."""
-    return vote(track.reads)
+# Enhancements tried on a track that voted to something the grammar rejects.
+# Each is cheap and targets a specific failure seen on real footage: low contrast
+# under sodium light, motion smear along the direction of travel, and the yellow
+# commercial plates whose colour channel confuses a model trained mostly on
+# white plates.
+def _enhance_variants(crop: "np.ndarray") -> list[tuple[str, "np.ndarray"]]:
+    variants: list[tuple[str, np.ndarray]] = []
+
+    grey = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
+
+    # Local contrast. Sodium-lit night footage compresses the plate into a
+    # narrow band of the histogram; CLAHE pulls the glyphs back apart.
+    clahe = cv2.createCLAHE(clipLimit=2.5, tileGridSize=(8, 8)).apply(grey)
+    variants.append(("clahe", cv2.cvtColor(clahe, cv2.COLOR_GRAY2BGR)))
+
+    # Unsharp mask. Recovers edge definition lost to the encoder without the
+    # ringing a plain sharpening kernel introduces.
+    blurred = cv2.GaussianBlur(clahe, (0, 0), 2.0)
+    sharp = cv2.addWeighted(clahe, 1.6, blurred, -0.6, 0)
+    variants.append(("unsharp", cv2.cvtColor(sharp, cv2.COLOR_GRAY2BGR)))
+
+    # Otsu binarisation. A yellow commercial plate reduces to black on white,
+    # which is what the recogniser saw most of during training.
+    _, binary = cv2.threshold(clahe, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    variants.append(("otsu", cv2.cvtColor(binary, cv2.COLOR_GRAY2BGR)))
+
+    return variants
+
+
+def refine_track(track: Track, detector: "PlateDetector") -> list[PlateRead]:
+    """
+    Take a second look at a track whose vote did not survive validation.
+
+    The first pass reads every frame once, at whatever quality the frame had. A
+    track that produced twenty reads and still failed is not helped by reading a
+    twenty-first frame the same way — but it may be helped by reading its *best*
+    frame differently. This re-runs recognition on the highest-confidence crop
+    under a few enhancements and returns any additional reads.
+
+    This costs one extra inference per failed track, not per frame, so it is
+    affordable: failed tracks are the minority, and the alternative is throwing
+    away a vehicle the detector definitely saw.
+    """
+    crop = track.best_crop
+    if crop is None or getattr(crop, "size", 0) == 0:
+        return []
+    if crop.shape[0] < 8 or crop.shape[1] < 24:
+        return []                      # too small for enhancement to add anything
+
+    extra: list[PlateRead] = []
+    for _, image in _enhance_variants(crop):
+        try:
+            for det in detector.read_crop(image):
+                if det.text and plausible_plate(det.text):
+                    extra.append(PlateRead(det.text, det.char_confidences))
+        except Exception:              # noqa: BLE001 - a variant failing is not fatal
+            continue
+    return extra
+
+
+def aggregate_track(track: Track,
+                    detector: "PlateDetector | None" = None) -> tuple[str, float, object] | None:
+    """
+    Collapse a track's reads into one confidence-weighted plate.
+
+    When a detector is supplied and the ordinary vote fails validation, the
+    track's best crop is re-read under enhancement and the vote is retried with
+    those extra reads. The result is only accepted if it validates, so the
+    refinement can rescue a plate but can never turn a good read into a bad one.
+    """
+    voted = vote(track.reads)
+    if detector is None:
+        return voted
+
+    grammar = voted[2] if voted else None
+    if voted and getattr(grammar, "valid", False) and getattr(grammar, "state_valid", False):
+        return voted
+
+    extra = refine_track(track, detector)
+    if not extra:
+        return voted
+
+    retried = vote(track.reads + extra)
+    if retried is None:
+        return voted
+    retried_grammar = retried[2]
+    if getattr(retried_grammar, "valid", False) and getattr(retried_grammar, "state_valid", False):
+        logger.debug("track %s rescued by refinement: %s", track.track_id, retried[0])
+        return retried
+    return voted
 
 
 # ─── Capture ──────────────────────────────────────────────────────────────────

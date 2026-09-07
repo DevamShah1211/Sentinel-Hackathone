@@ -265,7 +265,7 @@ def run(source: str, api_base: str, seconds: int, min_confidence: float) -> int:
 
     def harvest(index: int, force: bool = False) -> None:
         for track in tracks.collect_finished(index, force=force):
-            voted = aggregate_track(track)
+            voted = aggregate_track(track, detector)
             if voted is None:
                 continue
             plate, confidence, grammar = voted

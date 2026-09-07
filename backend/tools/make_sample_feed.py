@@ -187,7 +187,7 @@ def validate(clip: Path, truth: list[str], stride: int = 3, tiled: bool = True) 
 
     def collect(force: bool = False) -> None:
         for track in tracks.collect_finished(index, force=force):
-            voted = aggregate_track(track)
+            voted = aggregate_track(track, detector)
             if voted:
                 emitted.append((voted[0], voted[1], len(track.reads)))
 

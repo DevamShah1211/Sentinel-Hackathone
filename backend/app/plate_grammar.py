@@ -34,10 +34,69 @@ VALID_STATE_CODES: frozenset[str] = frozenset({
     "UP", "WB", "BH",
 })
 
+# States that issue alphanumeric RTO codes, where the second character of the
+# RTO block is a letter by design: DL8C, DL3C, DL1A. Everywhere else a letter in
+# that position is an OCR error and should be coerced to a digit.
+ALPHANUMERIC_RTO_STATES: frozenset[str] = frozenset({"DL"})
+
 # Substitutions applied when a position must be alphabetic / numeric.
-TO_ALPHA: dict[str, str] = {"0": "O", "1": "I", "2": "Z", "4": "A", "5": "S", "6": "G", "8": "B"}
-TO_DIGIT: dict[str, str] = {"O": "0", "Q": "0", "D": "0", "I": "1", "L": "1", "Z": "2",
-                            "A": "4", "S": "5", "G": "6", "T": "7", "B": "8"}
+#
+# These are not a general OCR confusion matrix: they are the specific shape
+# collisions that occur on Indian plates, where the glyph set is fixed and the
+# typeface is standardised. Every entry was either observed in this project's
+# reads or is a well-established confusion in the same font family.
+#
+# The earlier tables were incomplete in both directions — E was never mapped to
+# 3, so `GJ01AB12E4` was rejected outright rather than corrected, and 3, 7 and 9
+# had no letter form at all. Each gap is a plate the pipeline threw away.
+TO_ALPHA: dict[str, str] = {
+    "0": "O", "1": "I", "2": "Z", "3": "B", "4": "A",
+    "5": "S", "6": "G", "7": "T", "8": "B", "9": "P",
+}
+TO_DIGIT: dict[str, str] = {
+    "O": "0", "Q": "0", "D": "0", "U": "0",
+    "I": "1", "L": "1", "J": "1",
+    "Z": "2",
+    "E": "3",
+    "A": "4", "H": "4",
+    "S": "5",
+    "G": "6", "C": "6",
+    "T": "7", "Y": "7",
+    "B": "8",
+    "P": "9", "R": "9",
+}
+
+# How readily each substitution should be believed. A glyph pair that differs by
+# a single stroke (O/0, I/1) is near-certain; one that needs a smeared or partly
+# occluded character (C/6, U/0) is a guess. Voting uses this to prefer a
+# candidate that needed only confident substitutions over one that needed
+# speculative ones, instead of treating every correction as equally sound.
+SUBSTITUTION_COST: dict[tuple[str, str], float] = {
+    ("O", "0"): 0.05, ("0", "O"): 0.05,
+    ("I", "1"): 0.05, ("1", "I"): 0.05,
+    ("L", "1"): 0.15, ("1", "L"): 0.15,
+    ("S", "5"): 0.10, ("5", "S"): 0.10,
+    ("B", "8"): 0.10, ("8", "B"): 0.10,
+    ("Z", "2"): 0.10, ("2", "Z"): 0.10,
+    ("G", "6"): 0.15, ("6", "G"): 0.15,
+    ("Q", "0"): 0.20, ("D", "0"): 0.25,
+    ("A", "4"): 0.20, ("4", "A"): 0.20,
+    ("T", "7"): 0.20, ("7", "T"): 0.20,
+    ("E", "3"): 0.30, ("3", "E"): 0.30,
+    ("J", "1"): 0.35, ("C", "6"): 0.35,
+    ("U", "0"): 0.40, ("H", "4"): 0.40,
+    ("Y", "7"): 0.40, ("P", "9"): 0.35,
+    ("R", "9"): 0.45, ("9", "P"): 0.35,
+    ("3", "B"): 0.30, ("7", "T"): 0.20,
+}
+DEFAULT_SUBSTITUTION_COST = 0.5
+
+
+def substitution_cost(before: str, after: str) -> float:
+    """How much to distrust one character substitution. 0 = certain."""
+    if before == after:
+        return 0.0
+    return SUBSTITUTION_COST.get((before, after), DEFAULT_SUBSTITUTION_COST)
 
 # Standard format: state(2A) + rto(1-2D) + series(0-3A) + number(4D)
 _STANDARD = re.compile(r"^([A-Z]{2})(\d{1,2})([A-Z]{0,3})(\d{4})$")
@@ -104,7 +163,10 @@ def _coerce_standard(plate: str) -> tuple[str, int]:
     chars = list(plate)
     changes = 0
 
-    # State code — first two characters must be letters.
+    # State code — first two characters must be letters. When the coerced pair
+    # is not a real RTO code but a single further substitution would make one,
+    # take it: `GI` is not a state, `GJ` is, and I/J is a one-stroke confusion
+    # that the sandbox cameras produced on every single frame of cam14.
     for i in (0, 1):
         if chars[i].isdigit():
             sub = TO_ALPHA.get(chars[i])
@@ -121,24 +183,67 @@ def _coerce_standard(plate: str) -> tuple[str, int]:
                 changes += 1
 
     # Middle section: RTO digits then series letters.
+    #
+    # The split between them is genuinely ambiguous — GJ01AB1234 and GJ1AB1234
+    # differ only in how the middle block is divided — so rather than guessing
+    # once with a length rule, every legal split is tried and the one needing
+    # the least distrusted substitutions wins. On a two-character middle block
+    # the old rule always chose 1 digit + 1 letter, which silently mangled
+    # two-digit RTO codes with no series letter.
     middle = chars[2:len(chars) - 4]
     if middle:
-        # The RTO code is the leading 1-2 characters of the middle block.
-        rto_len = 2 if len(middle) >= 3 else 1
-        for i in range(rto_len):
-            if middle[i].isalpha():
-                sub = TO_DIGIT.get(middle[i])
-                if sub:
-                    middle[i] = sub
-                    changes += 1
-        # Everything after the RTO code is the series — letters.
-        for i in range(rto_len, len(middle)):
-            if middle[i].isdigit():
-                sub = TO_ALPHA.get(middle[i])
-                if sub:
-                    middle[i] = sub
-                    changes += 1
-        chars[2:len(chars) - 4] = middle
+        # A prior over how the middle block splits, because cost alone is not
+        # enough. `GJ0LAB1234` needs no substitutions if read as RTO `0` and
+        # series `LAB`, and one if read as RTO `01` and series `AB` — but
+        # single-digit RTO codes were only issued to the earliest districts and
+        # three-letter series are uncommon, so the zero-cost reading is the
+        # wrong one. These weights make the common shape win unless the
+        # evidence against it is strong.
+        SPLIT_PRIOR = {(2, 2): 0.0, (2, 1): 0.05, (2, 3): 0.10, (2, 0): 0.15,
+                       (1, 2): 0.20, (1, 1): 0.25, (1, 3): 0.45, (1, 0): 0.30}
+
+        best: tuple[float, int, list[str]] | None = None
+        for rto_len in range(1, min(2, len(middle)) + 1):
+            if len(middle) - rto_len > 3:
+                continue                      # series is at most 3 letters
+            candidate = list(middle)
+            cost = 0.0
+            ok = True
+            for i in range(rto_len):
+                if candidate[i].isalpha():
+                    # Delhi-style alphanumeric RTO codes (DL8C, DL3C) put a
+                    # letter in the second slot by design. Coercing it to a
+                    # digit would destroy a valid registration, so leave it and
+                    # let the standard pattern read it as the series instead.
+                    if (i == rto_len - 1 and rto_len == 2
+                            and "".join(chars[:2]) in ALPHANUMERIC_RTO_STATES):
+                        continue
+                    sub = TO_DIGIT.get(candidate[i])
+                    if not sub:
+                        ok = False
+                        break
+                    cost += substitution_cost(candidate[i], sub)
+                    candidate[i] = sub
+            if not ok:
+                continue
+            for i in range(rto_len, len(candidate)):
+                if candidate[i].isdigit():
+                    sub = TO_ALPHA.get(candidate[i])
+                    if not sub:
+                        ok = False
+                        break
+                    cost += substitution_cost(candidate[i], sub)
+                    candidate[i] = sub
+            if not ok:
+                continue
+            edits = sum(1 for a, b in zip(middle, candidate) if a != b)
+            score = cost + SPLIT_PRIOR.get((rto_len, len(candidate) - rto_len), 0.5)
+            if best is None or (score, edits) < (best[0], best[1]):
+                best = (score, edits, candidate)
+
+        if best is not None:
+            changes += best[1]
+            chars[2:len(chars) - 4] = best[2]
 
     return "".join(chars), changes
 

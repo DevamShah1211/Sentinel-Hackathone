@@ -162,3 +162,45 @@ class TestRegionalPlausibility:
         result = correct_plate("LA01AB1234")
         assert result.valid
         assert result.state_valid
+
+
+class TestExtendedConfusions:
+    """
+    Substitutions the first table was missing.
+
+    Each of these was a plate the pipeline threw away: E had no digit form, so
+    `GJ01AB12E4` was rejected outright rather than corrected to a valid serial.
+    """
+
+    @pytest.mark.parametrize("raw,expected", [
+        ("GJ01AB12E4", "GJ01AB1234"),   # E -> 3 in the serial
+        ("GJ01AB1Z34", "GJ01AB1234"),   # Z -> 2
+        ("GJ01ABI234", "GJ01AB1234"),   # I -> 1
+        ("GJ01ABT234", "GJ01AB7234"),   # T -> 7
+    ])
+    def test_serial_letter_confusions(self, raw, expected):
+        assert correct_plate(raw).text == expected
+
+    def test_delhi_alphanumeric_rto_survives(self):
+        """DL8C is a real Delhi RTO code; C must not be coerced to 6."""
+        result = correct_plate("DLBCAA1234")
+        assert result.text == "DL8CAA1234"
+        assert result.valid
+
+    def test_two_digit_rto_preferred_over_three_letter_series(self):
+        """
+        `GJ0LAB1234` splits two ways. Reading it as RTO 0 with series LAB needs
+        no substitution at all, but single-digit RTO codes with a three-letter
+        series are rare, so the common shape must win.
+        """
+        assert correct_plate("GJ0LAB1234").text == "GJ01AB1234"
+
+    def test_damaged_reads_are_still_refused(self):
+        """
+        Real eight-character reads of ten-character plates from cam14. A wider
+        substitution table must not make these look repairable — inventing the
+        missing characters would be fabrication.
+        """
+        for raw in ("GI65AA33", "GI63AA31", "KI484131"):
+            result = correct_plate(raw)
+            assert not (result.valid and result.state_valid), raw

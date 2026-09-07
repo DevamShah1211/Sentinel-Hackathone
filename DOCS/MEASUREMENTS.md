@@ -211,6 +211,63 @@ toll plazas, checkposts and lane-facing junction cameras are where statewide ANP
 should be deployed first, and cam12 shows the department already has cameras in
 roughly the right places — they need the optics, not different software.
 
+## 2c. Strengthening the recogniser, and what it did not buy
+
+Three changes were made to the recognition layer, each measured with
+`tools/bench_ocr.py` before and after. That tool holds two benchmarks: real OCR
+strings captured from these cameras replayed through the grammar, and the whole
+pipeline over the ground-truth clip. A change that improves one and worsens the
+other is not an improvement.
+
+**1. A complete confusion model.** The substitution tables were missing fifteen
+letters and three digits. `E` had no digit form, so `GJ01AB12E4` was rejected
+outright instead of corrected. Every gap was a plate thrown away.
+
+**2. Ambiguity-aware splitting.** `GJ0LAB1234` can be read as RTO `0` with
+series `LAB`, needing no substitution at all, or as RTO `01` with series `AB`,
+needing one. The old rule picked by length and got it wrong. Now every legal
+split is scored by how much each substitution should be distrusted — `O`/`0` is
+a one-stroke confusion, `R`/`9` is a guess — plus a prior over which shapes are
+actually issued. Delhi's alphanumeric codes (`DL8C`) are protected explicitly,
+because coercing that `C` to a `6` destroys a valid registration.
+
+**3. A refinement pass.** When a track's vote fails validation, its best crop is
+re-read under three enhancements: CLAHE for sodium-lit night footage, an unsharp
+mask for encoder softening, and Otsu binarisation for yellow commercial plates.
+The retried vote is accepted **only if it validates**, so refinement can rescue
+a plate but never degrade a good read.
+
+| Benchmark | Before | After |
+|---|---|---|
+| Grammar layer, real captured strings | 23/24 | **24/24** |
+| End to end, ground-truth clip | 6/6, 0 false positives | **6/6, 0 false positives** |
+| Unit tests | 72 | **79** |
+| Runtime over the clip | 48.6 s | **45.6 s** |
+
+The runtime is unchanged within noise because refinement fires only on tracks
+that already failed, which are the minority.
+
+### What it did not fix, stated plainly
+
+It does not rescue cam12 or cam14, and this was tested directly rather than
+assumed. Replaying the cam12 truck's real reads through the new pipeline:
+
+| | Voted result | Valid |
+|---|---|---|
+| First pass | `6302XX449` | no |
+| With refinement | `6302XX499` | no |
+| True plate, by eye | `GJ02XX4499` | — |
+
+The enhancements produce *different* wrong answers, not right ones. Otsu
+binarisation does return ten characters instead of nine, which is closer in
+shape, but the characters themselves are wrong and the grammar refuses them.
+
+That refusal is the correct behaviour and worth stating to a reviewer: a
+recogniser that could be pushed into accepting `6302XX499` as a registration
+would be worse, not better. The limit remains 5 and 10 pixels per character
+against the 20-30 that ANPR needs, and no post-processing recovers detail the
+sensor never captured.
+
 ## 3. Plate-grammar correction
 
     python -m pytest tests/test_plate_grammar.py

@@ -160,7 +160,7 @@ def process_camera(camera: dict, detector: PlateDetector, publisher: DetectionPu
 
     def drain(force: bool = False, frame_index: int = 0, frame=None) -> None:
         for track in tracks.collect_finished(frame_index, force=force):
-            voted = aggregate_track(track)
+            voted = aggregate_track(track, detector)
             if voted is None:
                 continue
             plate_text, confidence, grammar = voted
