@@ -1429,3 +1429,6 @@ tr.is-clickable:hover { background: var(--bg-raised); }
   font-size: 11px; color: var(--text-muted); margin-top: 3px;
 }
 .pd-timeline-speed.is-flagged { color: var(--red); font-weight: 600; }
+
+.detection-card.is-clickable { transition: border-color 0.15s var(--ease), transform 0.15s var(--ease); }
+.detection-card.is-clickable:hover { border-color: var(--border-strong); transform: translateX(2px); }

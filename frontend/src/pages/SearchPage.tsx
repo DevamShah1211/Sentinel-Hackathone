@@ -4,6 +4,7 @@ import { AlertTriangle, Car, Download, Map, Search, X } from 'lucide-react'
 import {
     downloadReport, getPlateRoute, getVehicleDetails, saveBlob, searchDetections,
 } from '../api/client'
+import PlateDetailDrawer from '../components/PlateDetailDrawer'
 
 // The seeded demonstration vehicles. Clicking one always returns sightings, so a
 // reviewer meeting this page for the first time is one click from seeing it work.
@@ -162,6 +163,7 @@ export default function SearchPage() {
     const [caseRef, setCaseRef] = useState('')
     const [vehicle, setVehicle] = useState<VehicleDetails | null>(null)
     const [vehicleLoading, setVehicleLoading] = useState(false)
+    const [detailPlate, setDetailPlate] = useState<string | null>(null)
 
     // Takes an optional plate so the example chips can search immediately.
     // Reading `query` from the closure would use the value from before setQuery.
@@ -216,9 +218,15 @@ export default function SearchPage() {
 
     return (
         <div className="page-content">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-                <h1 style={{ fontSize: 20, fontWeight: 700 }}>Plate Search</h1>
-                <div style={{ display: 'flex', gap: 8 }}>
+            <div className="page-head">
+                <div>
+                    <h1>Plate Search &amp; Route Reconstruction</h1>
+                    <div className="page-sub">
+                        Exact, partial and fuzzy matching across the detection index &middot;
+                        click any sighting for full vehicle detail
+                    </div>
+                </div>
+                <div className="page-head-actions">
                     <button className="btn btn-ghost btn-sm" onClick={() => handleDownload('xlsx')}>
                         <Download size={13} /> XLSX
                     </button>
@@ -412,7 +420,12 @@ export default function SearchPage() {
                     )}
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                         {results.map(det => (
-                            <div key={det.id} className="detection-card">
+                            <div
+                                key={det.id}
+                                className="detection-card is-clickable"
+                                title="Open full vehicle detail"
+                                onClick={() => setDetailPlate(det.plate_text)}
+                            >
                                 {det.crop_uri
                                     ? <img src={det.crop_uri} alt="plate crop" className="detection-crop" />
                                     : <div className="detection-crop-placeholder">No crop</div>
@@ -436,7 +449,10 @@ export default function SearchPage() {
                                         {det.camera_address && <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}> · {det.camera_address}</span>}
                                     </div>
                                 </div>
-                                <button className="btn btn-ghost btn-sm" onClick={() => showRoute(det.plate_text)}>
+                                <button
+                                    className="btn btn-ghost btn-sm"
+                                    onClick={e => { e.stopPropagation(); showRoute(det.plate_text) }}
+                                >
                                     <Map size={12} /> Route
                                 </button>
                             </div>
@@ -446,6 +462,7 @@ export default function SearchPage() {
             )}
 
             {route && <RoutePanel route={route} onClose={() => setRoute(null)} />}
+            <PlateDetailDrawer plate={detailPlate} onClose={() => setDetailPlate(null)} />
         </div>
     )
 }
