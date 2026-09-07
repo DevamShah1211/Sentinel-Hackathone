@@ -414,6 +414,7 @@ tr:last-child td { border-bottom: none; }
 }
 
 .video-tile:hover .tile-overlay { opacity: 1; }
+.video-tile:hover .tile-caption { opacity: 0; }
 
 .video-tile video, .video-tile iframe {
   width: 100%;
@@ -425,9 +426,9 @@ tr:last-child td { border-bottom: none; }
 .tile-overlay {
   position: absolute;
   inset: 0;
-  background: linear-gradient(to top, rgba(0,0,0,0.8) 0%, transparent 50%);
+  background: linear-gradient(to top, rgba(0,0,0,0.85) 0%, transparent 55%);
   opacity: 0;
-  transition: opacity 0.2s;
+  transition: opacity 0.2s var(--ease);
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
@@ -957,3 +958,51 @@ tr:last-child td { border-bottom: none; }
 }
 .leaflet-popup-content-wrapper { border-radius: var(--radius); }
 .leaflet-popup-close-button { color: var(--text-muted) !important; }
+
+
+/* ── Video tile caption ─────────────────────────────────────────
+   Always visible, because a demo video is watched, not hovered. It hides on
+   hover so the fuller overlay can take over without the two stacking. */
+.tile-caption {
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  padding: 18px 10px 8px;
+  background: linear-gradient(to top, rgba(0,0,0,0.82), transparent);
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  pointer-events: none;
+  transition: opacity 0.2s var(--ease);
+}
+.tile-caption-name {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #fff;
+  text-shadow: 0 1px 3px rgba(0,0,0,0.9);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tile-caption-dept {
+  font-size: 10px;
+  color: rgba(255,255,255,0.72);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* A live pip in the corner so a still frame still reads as a live wall. */
+.tile-live-pip {
+  position: absolute;
+  top: 7px; left: 7px;
+  display: flex; align-items: center; gap: 5px;
+  padding: 3px 7px;
+  border-radius: 4px;
+  background: rgba(0,0,0,0.55);
+  backdrop-filter: blur(4px);
+  font-size: 9px; font-weight: 700; letter-spacing: 0.06em;
+  color: var(--green);
+}
+.tile-live-pip::before {
+  content: ''; width: 5px; height: 5px; border-radius: 50%;
+  background: var(--green); animation: pulse 1.6s infinite;
+}

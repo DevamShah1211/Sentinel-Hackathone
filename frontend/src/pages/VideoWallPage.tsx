@@ -96,6 +96,14 @@ function VideoTile({ slot, index, onMaximise, onCameraChange, cameras, isMaximis
                 profile={profile}
             />
 
+            {/* Always-on caption. The hover overlay below carries the controls, but a
+                reviewer watching a recording never hovers, and an unlabelled tile
+                tells them nothing about which junction they are looking at. */}
+            <div className="tile-caption">
+                <span className="tile-caption-name">{cam.name}</span>
+                <span className="tile-caption-dept">{cam.department}</span>
+            </div>
+
             <div className="tile-overlay">
                 <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
                     <div>
