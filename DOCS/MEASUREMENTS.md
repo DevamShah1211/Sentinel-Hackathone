@@ -281,6 +281,16 @@ staggered rather than opened in a burst, one upstream connection per camera is
 shared by all viewers, idle relays release their connection, and a tile that
 cannot be served says so plainly instead of hanging.
 
+**Confirmed by the organisers, 7 September.** In reply to our report
+(`DOCS/email_to_sentinel_support.txt`) the Sentinel support team wrote that
+there is "no specific officially prescribed concurrent RTSP connection limit
+per registered team", that the connection-establishment behaviour "may be
+related to the sandbox gateway", and that a capped connection count with
+graceful degradation "is appropriate". The full reply is at
+`DOCS/reply_from_sentinel_support.txt`. The measurement above is therefore not
+our interpretation alone; the infrastructure owner has attributed it to the
+gateway.
+
 ## 6. Camera registry
 
 The sandbox catalogue (`/cameras.json`, behind a form login) publishes **only

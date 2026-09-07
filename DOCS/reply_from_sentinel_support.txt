@@ -1,0 +1,44 @@
+Reply from the Sentinel Hackathon support team to DOCS/email_to_sentinel_support.txt
+Received 7 September 2026. Reproduced verbatim.
+
+------------------------------------------------------------------------
+
+Dear Devam,
+
+Thank you for sharing the detailed observations and test results. We appreciate
+you taking the time to document the behaviour and share it with us.
+
+Regarding your queries:
+
+Concurrent RTSP connections:
+There is currently no specific officially prescribed concurrent RTSP connection
+limit per registered team. Your approach of maintaining a reasonable connection
+limit and handling graceful degradation is appropriate. You may continue with
+the configuration that works reliably for your platform.
+
+Serial connection behaviour:
+Thank you for bringing this to our attention. The connection establishment
+behaviour you observed may be related to the sandbox gateway. We will take note
+of the observation for the infrastructure team. No further action or additional
+testing is required from your side at this stage. If any changes or updated
+guidance are introduced, they will be communicated to participants.
+
+We also appreciate the information regarding the HLS response times and your
+decision to use RTSP for your operator view. The detailed timings and
+methodology are useful feedback for understanding the participant experience.
+
+Thank you again for your proactive technical feedback and for continuing to
+test the Sentinel environment.
+
+------------------------------------------------------------------------
+
+What this settles for the submission:
+
+1. There is no prescribed per-team RTSP connection limit. The six-stream
+   ceiling we measured is not a rule we were breaking.
+2. The organisers attribute the serial connection-establishment behaviour to
+   their sandbox gateway. That is the finding in MEASUREMENTS.md section 5a and
+   HLD.md section 9.0, now confirmed by the infrastructure owner.
+3. Our chosen design, a capped number of upstream connections with graceful
+   degradation, is described by them as appropriate.
+4. The RTSP-over-HLS decision for the operator view is acknowledged.

@@ -564,6 +564,16 @@ Direct camera-to-core ingestion at this scale requires ~192 Gbps of sustained
 backhaul into one facility. That is not a procurement problem; it is an
 architectural dead end.
 
+**Confirmed by the organisers, 7 September.** In reply to our report
+(`DOCS/email_to_sentinel_support.txt`) the Sentinel support team wrote that
+there is "no specific officially prescribed concurrent RTSP connection limit
+per registered team", that the connection-establishment behaviour "may be
+related to the sandbox gateway", and that a capped connection count with
+graceful degradation "is appropriate". The full reply is at
+`DOCS/reply_from_sentinel_support.txt`. The measurement above is therefore not
+our interpretation alone; the infrastructure owner has attributed it to the
+gateway.
+
 ### 9.2 Edge-first topology
 
 ```

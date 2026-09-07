@@ -80,7 +80,7 @@ Full detail, with reproduction commands, is in `DOCS/MEASUREMENTS.md`.
 `HLD.md` (high-level design, 14 sections), `PRESENTATION.md` (slide content),
 `MEASUREMENTS.md`, `DEMO_SCRIPTS.md` (shot lists for both videos),
 `SUBMISSION_CHECKLIST.md`, `evidence/` (annotated frames and crops),
-`email_to_sentinel_support.txt` (gateway concurrency report, ready to send).
+`email_to_sentinel_support.txt` (gateway concurrency report, sent) and `reply_from_sentinel_support.txt` (the organisers' answer: no prescribed RTSP limit, behaviour attributed to their gateway).
 
 ---
 
@@ -100,7 +100,7 @@ assistant; they need a human with the accounts.
 | 5 | **Export HLD and presentation to PDF** | person | Any Markdown-to-PDF tool; keep the tables. |
 | 6 | **Deploy a reachable instance** | person | `docker compose up`. Set `AUTH_ENABLED=true`, change `SECRET_KEY` and `DEMO_ADMIN_PASSWORD`. |
 | 7 | **Fill links into README.md** and submit the portal form | person | Repository, deployed URL, both videos, PDFs. |
-| 8 | **Send the gateway email** | person | `DOCS/email_to_sentinel_support.txt`; add your name and team. It is a courteous, measured bug report and reflects well on the team. |
+| 8 | ~~Send the gateway email~~ **Done and answered** | — | Sent; reply filed at `DOCS/reply_from_sentinel_support.txt`. The organisers confirm there is no prescribed RTSP limit and attribute the serial-connection behaviour to the sandbox gateway. |
 
 ### B.2 Engineering that would strengthen the submission, if time allows
 
