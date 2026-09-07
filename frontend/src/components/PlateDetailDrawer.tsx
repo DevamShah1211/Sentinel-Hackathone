@@ -21,6 +21,7 @@ export interface Sighting {
     id: string
     plate_text: string
     district?: string
+    city?: string
     rto_valid?: boolean
     confidence: number
     detected_at: string
@@ -145,7 +146,7 @@ export default function PlateDetailDrawer({ plate, onClose, context }: {
     const flagged = route?.flagged_transitions ?? 0
     // The RTO district the registration belongs to. The API derives it from the
     // plate, so it is available on any sighting of this vehicle.
-    const registration = sightings.find(s => s.district || s.rto_valid === false)
+    const registration = sightings.find(s => s.district || s.city || s.rto_valid === false)
     const topSpeed = ordered.reduce<number>((m, s) => Math.max(m, s.speed_kmh ?? 0), 0)
 
     return (
@@ -200,7 +201,12 @@ export default function PlateDetailDrawer({ plate, onClose, context }: {
                             <Field
                                 label="Registered district"
                                 value={registration?.district
-                                    ?? (registration && registration.rto_valid === false
+                                    // Ahmedabad holds GJ-01 and GJ-27; naming the
+                                    // city stops the two reading as unrelated places.
+                                    ? registration.city && registration.city !== registration.district
+                                        ? `${registration.district} (${registration.city})`
+                                        : registration.district
+                                    : (registration && registration.rto_valid === false
                                         ? 'Not an issued RTO district' : undefined)}
                             />
                             <Field

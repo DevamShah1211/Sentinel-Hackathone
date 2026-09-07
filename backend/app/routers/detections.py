@@ -95,6 +95,8 @@ class DetectionOut(BaseModel):
     # read time rather than stored. It costs a dictionary lookup and it tells an
     # investigator where a vehicle was registered, which the plate alone does not.
     district: Optional[str] = None
+    # The city, when several RTO codes cover one (Ahmedabad is GJ-01 and GJ-27).
+    city: Optional[str] = None
     rto_valid: bool = True
     # Joined camera fields
     camera_name: Optional[str] = None
@@ -208,6 +210,7 @@ async def search_detections(
             notes=det.notes,
             partial=_is_partial(det.raw_reads),
             district=_grammar(det.plate_text).district,
+            city=_grammar(det.plate_text).city,
             rto_valid=_grammar(det.plate_text).rto_valid,
             camera_name=row.camera_name,
             camera_department=row.camera_department,

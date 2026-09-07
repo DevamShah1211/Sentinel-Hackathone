@@ -94,6 +94,50 @@ GUJARAT_RTO: dict[int, str] = {
     38: "Aravalli", 39: "Modasa",
 }
 
+# A city is not one RTO code. When registrations in a district exhaust their
+# series, the state opens an additional office, and it gets its own number far
+# from the original: Ahmedabad is GJ-01 and GJ-27, not GJ-01 and GJ-02.
+#
+# This matters for search. An investigator asking "which vehicles from Ahmedabad
+# passed this camera" who filters on GJ-01 alone silently misses every vehicle
+# registered at the East office, and nothing in the interface tells them so.
+#
+# Gujarat's four multi-office cities, verified against the state listing. The
+# same pattern exists in every large state — Mumbai, Delhi, Bengaluru, Chennai
+# and Hyderabad all hold several codes — but those are not enumerated here for
+# the reason given in DOCS/RTO_CODES_INDIA.md: unverified detail about a system
+# that identifies vehicles is worse than an admitted gap.
+CITY_RTO_GROUPS: dict[str, dict[str, tuple[int, ...]]] = {
+    "GJ": {
+        "Ahmedabad": (1, 27),      # GJ-01 Ahmedabad, GJ-27 Ahmedabad East
+        "Rajkot":    (3, 32),      # GJ-03 Rajkot, GJ-32 Rajkot Rural
+        "Surat":     (5, 28),      # GJ-05 Surat, GJ-28 Bardoli extension
+        "Vadodara":  (6, 29),      # GJ-06 Vadodara, GJ-29 Vadodara Rural
+    },
+}
+
+
+def city_of(state: str, number: int) -> str | None:
+    """The city a district code belongs to, when several codes share one."""
+    for city, codes in CITY_RTO_GROUPS.get(state.upper(), {}).items():
+        if number in codes:
+            return city
+    return None
+
+
+def sibling_codes(state: str, number: int) -> tuple[int, ...]:
+    """
+    Every RTO code covering the same city as this one, including itself.
+
+    Use this to widen a district search. Filtering Ahmedabad on GJ-01 alone
+    misses GJ-27, and a missed vehicle in an investigation is not a small error.
+    """
+    for codes in CITY_RTO_GROUPS.get(state.upper(), {}).values():
+        if number in codes:
+            return codes
+    return (number,)
+
+
 # Districts commonly seen on Gujarat roads. A read landing on one of these is
 # more likely correct than one landing on a district that exists but is rarely
 # encountered, which the correction step uses to break ties.

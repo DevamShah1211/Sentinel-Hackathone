@@ -26,7 +26,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
-from app.rto_codes import district_name, rto_exists
+from app.rto_codes import city_of, district_name, rto_exists
 
 # Official RTO state and union-territory codes, plus BH (Bharat series).
 VALID_STATE_CODES: frozenset[str] = frozenset({
@@ -159,6 +159,9 @@ class PlateResult:
     # accepts anything, so this never rejects a real vehicle on a guess.
     rto_valid: bool = True
     district: str | None = None
+    # When several RTO codes cover one city (Ahmedabad is GJ-01 and GJ-27), the
+    # city they share. A district search that ignores this misses vehicles.
+    city: str | None = None
 
 
 def normalise(text: str) -> str:
@@ -360,6 +363,7 @@ def correct_plate(text: str) -> PlateResult:
             corrected, raw, True, state in VALID_STATE_CODES, changes, "standard",
             rto_valid=rto_exists(state, rto),
             district=district_name(state, rto),
+            city=city_of(state, rto),
         )
 
     # Not coercible — hand back the raw read rather than a fabricated one.

@@ -81,6 +81,33 @@ full and the one the recogniser can name.
 | GJ-19 | Bardoli | GJ-39 | Modasa |
 | GJ-20 | Dahod | | |
 
+### A city is not one code
+
+Four Gujarat cities hold two RTO codes each, and the second is nowhere near the
+first:
+
+| City | Codes | Why |
+|---|---|---|
+| Ahmedabad | **GJ-01** and **GJ-27** | GJ-27 Ahmedabad East opened when GJ-01 filled |
+| Rajkot | **GJ-03** and **GJ-32** | GJ-32 Rajkot Rural |
+| Surat | **GJ-05** and **GJ-28** | GJ-28 Bardoli extension |
+| Vadodara | **GJ-06** and **GJ-29** | GJ-29 Vadodara Rural |
+
+When registrations in a district exhaust their series the state opens another
+office, and it takes the next free number in the state rather than one adjacent
+to the original. So Ahmedabad is GJ-01 and GJ-27, not GJ-01 and GJ-02.
+
+**Why this matters here.** An investigator asking which Ahmedabad vehicles
+passed a camera, and filtering on GJ-01, silently misses every vehicle
+registered at the East office. Nothing in a plain district filter would tell
+them so. `sibling_codes()` in `app/rto_codes.py` returns every code covering a
+city, and the detail panel names the city beside the district, so GJ-01 and
+GJ-27 do not read as unrelated places.
+
+The same pattern exists in every large state — Mumbai, Delhi, Bengaluru,
+Chennai and Hyderabad each hold several codes — but those groupings are not
+enumerated here, for the reason in section 6.
+
 **Anything above GJ-39 has never been issued.** That is why the demonstration
 plates use GJ-96 to GJ-99: correctly formatted, indistinguishable to the
 recogniser, and impossible to belong to a real person.

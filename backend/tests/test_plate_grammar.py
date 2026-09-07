@@ -301,3 +301,42 @@ class TestRTOReference:
 
         assert RTO_MAX["GJ"] == max(GUJARAT_RTO)
         assert set(GUJARAT_RTO) == set(range(1, RTO_MAX["GJ"] + 1))
+
+
+class TestMultiOfficeCities:
+    """
+    A city is not one RTO code.
+
+    Ahmedabad is GJ-01 and GJ-27. An investigator filtering on GJ-01 alone
+    silently misses every vehicle registered at the East office, and a missed
+    vehicle in an investigation is not a small error.
+    """
+
+    def test_both_ahmedabad_codes_resolve_to_one_city(self):
+        assert correct_plate("GJ01AB1234").city == "Ahmedabad"
+        assert correct_plate("GJ27AB1234").city == "Ahmedabad"
+
+    def test_districts_keep_their_own_names(self):
+        """The city groups them; it does not flatten them."""
+        assert correct_plate("GJ01AB1234").district == "Ahmedabad"
+        assert correct_plate("GJ27AB1234").district == "Ahmedabad East"
+
+    def test_single_office_district_has_no_city_group(self):
+        result = correct_plate("GJ18CD5678")
+        assert result.district == "Gandhinagar"
+        assert result.city is None
+
+    def test_sibling_codes_widen_a_district_search(self):
+        from app.rto_codes import sibling_codes
+
+        assert sibling_codes("GJ", 1) == (1, 27)
+        assert sibling_codes("GJ", 27) == (1, 27)
+        assert sibling_codes("GJ", 18) == (18,)
+
+    def test_every_grouped_code_is_a_real_district(self):
+        """A city group must never name a code the state never issued."""
+        from app.rto_codes import CITY_RTO_GROUPS, GUJARAT_RTO
+
+        for city, codes in CITY_RTO_GROUPS["GJ"].items():
+            for code in codes:
+                assert code in GUJARAT_RTO, f"{city} claims GJ-{code:02d}"
