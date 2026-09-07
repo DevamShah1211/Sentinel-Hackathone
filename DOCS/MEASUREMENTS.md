@@ -308,6 +308,48 @@ only where the reads themselves are undecided.
 | End to end, ground-truth clip | 6/6, 0 false positives |
 | Unit tests | 85 |
 
+## 2e. A learned prior, and why it is not "training"
+
+`app/plate_prior.py` counts which RTO districts and series this deployment has
+actually indexed, and uses those counts to settle reads the recogniser itself
+could not decide. `tools/build_plate_prior.py` builds it from the detection
+index; re-running it as the index grows is the one part of the recognition stack
+that improves with use.
+
+**It is calibration, not training, and the distinction is worth stating.** No
+network weights change. Training the OCR would need thousands of annotated
+Indian plate crops, a GPU, and days; this needs a table of registrations and
+scores a plate in microseconds. "We trained a model" invites the question of
+what data, labelled by whom, validated how. "We counted which districts occur
+and used that to break ties" can be checked against the code in an afternoon.
+
+**Where it is allowed to act.** Only at a character position where the OCR reads
+genuinely disagreed, only between two readings already equal on grammar, and
+only when one is meaningfully more plausible than the other. It cannot overturn
+a rank, and it cannot touch a position every read agreed on.
+
+That boundary is not a stylistic choice. The district-rewriting step in section
+2d was removed for crossing it, and the same trap is present here: the
+demonstration plates use unissued districts, so the prior scores them at the
+floor. Wired naively it would have rewritten `GJ96XY4455` again.
+
+| Read | First pass | Result |
+|---|---|---|
+| Split GJ-01 / GJ-30, both real | tie | **GJ-01 Ahmedabad** — the district a Gujarat camera actually sees |
+| Split GJ-88 / GJ-38 | tie | **GJ-38 Aravalli** — the district that exists |
+| Unanimous GJ-96 (unissued) | GJ96XY4455 | **unchanged** |
+| Unanimous GJ-99 (unissued) | GJ99AB1234 | **unchanged** |
+
+| Benchmark | Result |
+|---|---|
+| Grammar layer, real captured strings | 24/24 |
+| End to end, ground-truth clip | 6/6, 0 false positives |
+| Unit tests | 98 |
+
+A missing prior file scores everything zero, so a fresh deployment behaves
+exactly as it did before this module existed. A recogniser that depends on a
+data file it may not have is one that fails in the field.
+
 ## 3. Plate-grammar correction
 
     python -m pytest tests/test_plate_grammar.py

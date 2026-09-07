@@ -340,3 +340,62 @@ class TestMultiOfficeCities:
         for city, codes in CITY_RTO_GROUPS["GJ"].items():
             for code in codes:
                 assert code in GUJARAT_RTO, f"{city} claims GJ-{code:02d}"
+
+
+class TestLearnedPrior:
+    """
+    The learned prior settles ties. It must never do more than that.
+
+    This is the same territory that made district rewriting unusable, so the
+    boundary is asserted rather than assumed: an ambiguous read may be resolved,
+    a unanimous one may not be touched, and a missing prior file must change
+    nothing at all.
+    """
+
+    def test_resolves_a_split_between_two_real_districts(self):
+        """
+        Reads split evenly between GJ-01 Ahmedabad and GJ-30 Chhota Udaipur.
+        A Gujarat deployment sees vastly more Ahmedabad vehicles.
+        """
+        reads = [PlateRead(t, [0.55] * len(t)) for t in
+                 ("GJ01AB1234", "GJ30AB1234", "GJ01AB1234", "GJ30AB1234")]
+        plate, _, _ = vote(reads)
+        assert plate == "GJ01AB1234"
+
+    def test_unanimous_unissued_district_is_left_alone(self):
+        """
+        The demonstration plates use unissued districts deliberately. The prior
+        scores them impossibly low and must still not rewrite them, because no
+        read disagreed.
+        """
+        for plate_text in ("GJ96XY4455", "GJ99AB1234"):
+            reads = [PlateRead(plate_text, [1.0] * len(plate_text)) for _ in range(6)]
+            plate, _, _ = vote(reads)
+            assert plate == plate_text
+
+    def test_prior_scores_impossible_districts_below_real_ones(self):
+        from app.plate_prior import PlatePrior
+
+        prior = PlatePrior()
+        prior.observe_many(["GJ01AB1234"] * 10)
+        assert prior.score("GJ99AB1234") < prior.score("GJ01AB1234")
+        assert prior.score("GG02XX4499") < prior.score("GJ01AB1234")
+
+    def test_empty_prior_has_no_opinion(self):
+        """
+        A deployment with no prior file must behave exactly as before. A
+        recogniser that depends on a data file it may not have is one that
+        fails in the field.
+        """
+        from app.plate_prior import PlatePrior
+
+        prior = PlatePrior()
+        assert prior.score("GJ01AB1234") == 0.0
+        assert not prior.better("GJ01AB1234", "GJ30AB1234")
+
+    def test_prior_learns_from_observations(self):
+        from app.plate_prior import PlatePrior
+
+        prior = PlatePrior()
+        prior.observe_many(["GJ27AB1234"] * 20 + ["GJ30CD5678"])
+        assert prior.score("GJ27AB1234") > prior.score("GJ30AB1234")

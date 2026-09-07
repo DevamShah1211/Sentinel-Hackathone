@@ -532,6 +532,8 @@ def _try_runner_ups(scores: list[dict[str, float]], voted_chars: list[str],
     best = current
     best_rank = read_quality(current)
 
+    prior = _get_prior()
+
     for pos, (chosen, conf) in enumerate(zip(voted_chars, position_conf)):
         if conf >= _RUNNER_UP_CEILING or pos >= len(scores):
             continue
@@ -555,4 +557,32 @@ def _try_runner_ups(scores: list[dict[str, float]], voted_chars: list[str],
                 best, best_rank = candidate, rank
                 if best_rank == 3:
                     return best
+            elif rank == best_rank and prior is not None:
+                # Equal on grammar. The learned prior decides — but only here,
+                # where the OCR itself was undecided and the two readings are
+                # otherwise indistinguishable. It can never overrule a rank.
+                if prior.better(candidate.text, best.text):
+                    best = candidate
     return best
+
+
+_PRIOR_CACHE: list = []
+
+
+def _get_prior():
+    """
+    The learned plate prior, loaded once.
+
+    Absent or unreadable, this returns None and voting behaves exactly as it did
+    before the prior existed. A recogniser that depends on a data file it may
+    not have is a recogniser that fails in the field.
+    """
+    if _PRIOR_CACHE:
+        return _PRIOR_CACHE[0]
+    try:
+        from app.plate_prior import PlatePrior
+        prior = PlatePrior.load()
+        _PRIOR_CACHE.append(prior if prior.total else None)
+    except Exception:                          # noqa: BLE001
+        _PRIOR_CACHE.append(None)
+    return _PRIOR_CACHE[0]
