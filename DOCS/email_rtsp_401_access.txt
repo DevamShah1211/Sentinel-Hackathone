@@ -1,0 +1,88 @@
+To:      sentinel.hackathon@gujarat.gov.in
+Subject: RTSP feeds returning 401 Unauthorized since approx 16:30 IST today — same credentials worked earlier
+
+------------------------------------------------------------------------
+NOTE BEFORE SENDING
+Replace <Your name> and <Team name> below, and add your registered team ID
+if you have one. Delete this box.
+
+If you or the helpdesk rotated the account password earlier today, that is
+almost certainly the cause and this email is unnecessary — just update the
+password in backend/.env instead.
+------------------------------------------------------------------------
+
+Dear Sentinel Hackathon team,
+
+We are no longer able to authenticate to the RTSP gateway. The same
+credentials worked successfully earlier today, and nothing changed at our
+end between the two tests.
+
+WHAT WE ARE SEEING
+
+Every camera we request returns 401 immediately:
+
+    RTSP/1.0 401 Unauthorized
+    CSeq: 1
+    Server: gortsplib
+    WWW-Authenticate: Basic realm="ipcam"
+
+We send Basic authentication and the server's challenge asks for Basic
+authentication, so the scheme matches. The response is an immediate
+rejection rather than a timeout.
+
+TIMELINE (all times IST, today, 7 September 2026)
+
+    16:04   Captured 120 seconds of video from cam14 successfully.
+            Plate detections recorded, evidence frames saved.
+    18:09   Same credentials, same host, same code: 401 on every camera.
+
+We tested cam01, cam12 and cam14 individually at 18:09 and all three
+returned the same 401.
+
+WHAT WE CHECKED FIRST
+
+We eliminated the obvious causes at our end before writing:
+
+  - Gateway reachable.     TCP connect to 103.250.160.189 on ports 8554,
+                           443 and 80 all succeed immediately.
+  - Portal reachable.      https://sentinel.gujarat.gov.in returns HTTP 200.
+  - Our connectivity fine. Other external hosts reachable normally.
+  - Not a client issue.    A raw RTSP DESCRIBE sent by hand, outside our
+                           application, returns the same 401.
+  - Not a scheme mismatch. The server challenges for Basic; we send Basic.
+
+So the gateway is running and accepting connections. It is specifically
+rejecting our credentials.
+
+ACCOUNT
+
+    Registered email : devam6205@gmail.com
+    Gateway          : 103.250.160.189:8554
+    Path tested      : /stream/cam01, /stream/cam12, /stream/cam14
+
+WHAT WE WOULD LIKE TO KNOW
+
+  1. Has the password for this account been changed or reset today? If so,
+     please let us know where to collect the current one.
+
+  2. Has access been suspended or the access list revised? We were told on
+     an earlier thread that the access list had been updated, so we want to
+     check we have not fallen off it inadvertently.
+
+  3. If neither, could the gateway's authentication backend be at fault?
+     The immediate 401 with a valid challenge suggests the credential store
+     rather than the RTSP service itself.
+
+We are conscious that the submission window closes tomorrow at 14:00, so
+any guidance today would be very welcome. Our platform is complete and our
+own-feed demonstration is unaffected; this only limits further work against
+the government cameras.
+
+Thank you for your help, and for the quick reply on our earlier report about
+concurrent connections.
+
+Kind regards,
+
+<Your name>
+<Team name>
+devam6205@gmail.com

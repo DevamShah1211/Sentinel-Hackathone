@@ -350,6 +350,41 @@ A missing prior file scores everything zero, so a fresh deployment behaves
 exactly as it did before this module existed. A recogniser that depends on a
 data file it may not have is one that fails in the field.
 
+## 2f. Sandbox access withdrawn, 7 September 16:30 IST
+
+A planned re-sweep of all thirty cameras with the improved recogniser could not
+be completed. Every camera now returns an immediate rejection:
+
+```
+RTSP/1.0 401 Unauthorized
+Server: gortsplib
+WWW-Authenticate: Basic realm="ipcam"
+```
+
+The same credentials captured 120 seconds of cam14 successfully at 16:04 the
+same day. Nothing changed at our end between the two tests.
+
+Eliminated before reporting: the gateway is reachable (TCP connect succeeds on
+8554, 443 and 80), the portal returns HTTP 200, our own connectivity is fine,
+and a raw RTSP DESCRIBE sent by hand outside the application returns the same
+401 — so it is not our client. The server challenges for Basic authentication
+and we send Basic authentication, so the scheme matches. The gateway is running
+and specifically rejecting the credential.
+
+Reported to the organisers; the message is at `DOCS/email_rtsp_401_access.txt`.
+
+**What this does not affect.** Every measurement in this document was taken
+before the change and the evidence frames are committed. The live demonstration
+runs on the presenter's own feed (`DOCS/LIVE_DEMO_RUNBOOK.md`), which is what
+the playbook asks for and which is precisely why that path exists rather than
+depending on the sandbox.
+
+**What it adds.** This is the second independent reliability problem on the
+shared sandbox, after the concurrency limit the organisers have already
+attributed to their gateway (section 5a). Both are arguments for the edge-first
+topology in HLD section 9.2: a statewide platform cannot depend on a single
+shared ingestion point remaining available.
+
 ## 3. Plate-grammar correction
 
     python -m pytest tests/test_plate_grammar.py
