@@ -41,3 +41,8 @@ backend/sample_feeds/
 backend/geocode_cache.json
 backend/logs/
 frontend/shots.mjs
+
+# Captured plate crops. The labels are committed (they are the dataset), the
+# images are not: they are large, they are regenerable, and real crops would
+# contain vehicles belonging to identifiable people.
+backend/data/plate_dataset/images/
