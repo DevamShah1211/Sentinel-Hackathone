@@ -44,6 +44,36 @@ logger = logging.getLogger("sentinel.vision")
 MIN_GREY_STD = 12.0
 MIN_EDGE_DENSITY = 0.8
 
+# Pixels per character below which a read is recorded but never alerted on.
+#
+# Measured, not guessed. On the government grid a plate box of 6.5 px per
+# character at cam10 produced "GJ038988" at 0.83 confidence from a plate that
+# reads GJ03HR4879 in the saved evidence crop — a well-formed, grammar-valid,
+# high-confidence registration whose four-digit serial was wrong. cam18 did the
+# same. Confidence does not help here: the recogniser is confident about the
+# shape it hallucinated, because at that size there are no glyphs left to be
+# unsure about.
+#
+# 12 sits above every false positive this grid has produced (max 6.9) and below
+# the 15-20 at which reads were measured correct 6/6, so it separates the two
+# populations we have actually observed. Published guidance asks 20-30; this is
+# deliberately the weaker claim, chosen to reject what we have proof is wrong
+# rather than to assert where correctness begins.
+MIN_ALERTABLE_PX_PER_CHAR = 12.0
+
+# Burnt-in overlay captions are read as plates. Measured: cam24 on the
+# government grid carries the caption "Camera 01" in its lower-right corner, and
+# the recogniser returned it 26 times in 45 seconds as "C4MPC871" and similar,
+# at 14.2 px per character — the *highest* resolution on the entire grid,
+# because a caption is rendered crisply while a real plate is not. Left alone it
+# would rank an empty street as the best-sited camera we have.
+#
+# What separates a caption from a vehicle is motion: a caption occupies the same
+# pixels in every frame, and a vehicle never does. A region seen this many times
+# at effectively the same coordinates is treated as furniture.
+STATIC_REGION_HITS = 6
+STATIC_REGION_IOU = 0.85
+
 # Ratio of vertical to horizontal gradient energy below which a frame is treated
 # as smeared by a corrupt keyframe. Real footage sits near 1.0; heavy streaking
 # collapses the vertical term.
@@ -186,7 +216,12 @@ def deduplicate(detections: list[RawDetection], iou_threshold: float = 0.4) -> l
 
 class PlateDetector:
     """
-    Wraps fast-alpr with tiled inference and overlay-text filtering.
+    Wraps fast-alpr with tiled inference and static-overlay suppression.
+
+    The overlay suppression is stateful and keyed by camera, because one detector
+    instance is shared by every stream in the worker — thirty ONNX sessions would
+    not fit. Keying matters: pooling furniture across cameras could suppress a
+    genuine plate that happened to appear where another camera's caption sits.
 
     The engine is pretrained and runs locally on CPU — no training, no API key and
     no frame ever leaves the deployment, which is the only defensible arrangement
@@ -210,6 +245,10 @@ class PlateDetector:
         self.tile_scale = tile_scale
         # fast-alpr's ONNX sessions are not documented as thread-safe; serialise.
         self._lock = threading.Lock()
+        # Boxes that keep reappearing at identical coordinates: burnt-in captions
+        # and timestamps rather than vehicles. Keyed by camera, because the
+        # worker shares one detector across every stream.
+        self._static_regions: dict[str, list[list]] = {}
         logger.info("Plate detector ready (detector=%s ocr=%s tiled=%s)",
                     detector_model, ocr_model, tiled)
 
@@ -253,8 +292,37 @@ class PlateDetector:
     # crop upscaled to 440 px reads exactly as well as a natively large one.
     MIN_OCR_PLATE_WIDTH = 320
 
-    def detect(self, frame: np.ndarray) -> list[RawDetection]:
-        """Run detection over a frame and return reads in full-frame coordinates."""
+    def _is_static_furniture(self, bbox: tuple[int, int, int, int],
+                             source: str = "") -> bool:
+        """
+        Whether this box is a burnt-in overlay rather than a passing vehicle.
+
+        Overlay captions are fixed to the frame, so the same coordinates recur
+        indefinitely; a vehicle sweeps through and its box never repeats exactly.
+        A region is only suppressed once it has been seen STATIC_REGION_HITS
+        times, so a genuine plate is never lost — the cost of the filter is at
+        most a handful of early reads from a stationary vehicle, and a vehicle
+        parked in view for that long is not the subject of an ANPR alert anyway.
+        """
+        regions = self._static_regions.setdefault(source, [])
+        for entry in regions:
+            if _iou(bbox, entry[0]) >= STATIC_REGION_IOU:
+                entry[1] += 1
+                return entry[1] > STATIC_REGION_HITS
+        regions.append([bbox, 1])
+        # Bound the memory: only the most persistent regions are worth holding.
+        if len(regions) > 64:
+            regions.sort(key=lambda e: -e[1])
+            del regions[32:]
+        return False
+
+    def detect(self, frame: np.ndarray, source: str = "") -> list[RawDetection]:
+        """
+        Run detection over a frame and return reads in full-frame coordinates.
+
+        `source` names the camera, so burnt-in overlay positions are learned per
+        camera rather than pooled across a shared detector.
+        """
         results: list[RawDetection] = []
 
         regions: list[Tile]
@@ -291,6 +359,13 @@ class PlateDetector:
                     int(tile.offset_x + box.x2 / tile.scale),
                     int(tile.offset_y + box.y2 / tile.scale),
                 )
+                # Burnt-in captions and timestamps sit at fixed coordinates.
+                # Checked here, after mapping back to full-frame space, so a
+                # region is identified consistently however it was tiled.
+                if self._is_static_furniture(bbox, source):
+                    logger.debug("Suppressed static overlay %r at %s", text, bbox)
+                    continue
+
                 results.append(RawDetection(
                     text=text,
                     char_confidences=confidences,
@@ -319,11 +394,31 @@ class Track:
     last_frame: int = 0
     best_crop: np.ndarray | None = None
     best_crop_confidence: float = -1.0
+    widest_box: int = 0
+
+    @property
+    def pixels_per_character(self) -> float:
+        """
+        Plate width in pixels divided by characters read, at the track's closest
+        frame.
+
+        This is the measurement that decides whether a read can be believed at
+        all. Published ANPR guidance asks for 20-30 pixels per character; below
+        roughly 12 the recogniser is no longer resolving glyphs, and what it
+        returns is a plausible shape rather than a reading. Measured on the
+        widest box in the track, because readability is set by the vehicle's
+        closest approach, not by wherever it happened to be when the track ended.
+        """
+        if not self.widest_box or not self.reads:
+            return 0.0
+        longest = max((len(r.text) for r in self.reads), default=0)
+        return self.widest_box / longest if longest else 0.0
 
     def add(self, det: RawDetection, frame_idx: int, pts_ms: int,
             frame: np.ndarray | None = None) -> None:
         self.reads.append(PlateRead(det.text, det.char_confidences))
         self.bbox = det.bbox
+        self.widest_box = max(self.widest_box, det.bbox[2] - det.bbox[0])
         self.last_frame = frame_idx
         self.last_pts_ms = pts_ms
         if not self.first_pts_ms:
@@ -477,6 +572,24 @@ def refine_track(track: Track, detector: "PlateDetector") -> list[PlateRead]:
         except Exception:              # noqa: BLE001 - a variant failing is not fatal
             continue
     return extra
+
+
+def read_is_alertable(track: Track) -> bool:
+    """
+    Whether a track was seen well enough for its reading to trigger an alert.
+
+    Separated from the vote deliberately. A read below the resolution threshold
+    is still worth indexing — it narrows a search, and an analyst looking at the
+    evidence crop can judge it — but it must not raise an alert against a
+    vehicle, because the identifying digits are the part that goes wrong first.
+    Searchable, badged, never alertable, which is the same rule the partial-read
+    path already applies to grammar failures.
+
+    A track with no measurable box (synthetic reads, unit tests) is not gated
+    here; the caller decides, and the production path always has boxes.
+    """
+    resolution = track.pixels_per_character
+    return resolution == 0.0 or resolution >= MIN_ALERTABLE_PX_PER_CHAR
 
 
 def aggregate_track(track: Track,

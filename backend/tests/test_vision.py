@@ -10,7 +10,10 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
+from app.plate_grammar import PlateRead
+
 from app.vision import (
+    MIN_ALERTABLE_PX_PER_CHAR,
     RawDetection,
     frame_is_smeared,
     Track,
@@ -18,6 +21,7 @@ from app.vision import (
     build_tiles,
     deduplicate,
     frame_is_decodable,
+    read_is_alertable,
 )
 
 
@@ -191,3 +195,133 @@ class TestSmearDetection:
     def test_uniform_frame_is_rejected(self) -> None:
         # No structure in either direction: nothing worth showing.
         assert frame_is_smeared(np.full((360, 640, 3), 128, np.uint8))
+
+
+class TestResolutionGate:
+    """
+    A read from a plate too small to resolve must never raise an alert.
+
+    These are regressions from a real sweep of the government grid on
+    8 September 2026, kept because both reads were grammar-valid, confident and
+    wrong — the combination that puts an innocent registration in front of an
+    officer. Evidence crops are in DOCS/evidence/sweep_20260908/.
+    """
+
+    def test_cam10_false_positive_is_not_alertable(self):
+        """
+        cam10 read "GJ038988" at 0.83 confidence from a plate whose evidence
+        crop reads GJ03HR4879. Grammar cannot catch this: a two-letter, two-digit,
+        no-series, four-digit registration is a legitimate Indian format. Only the
+        size of the thing being read tells us not to believe it.
+        """
+        track = Track(track_id="cam10")
+        for _ in range(6):
+            track.add(_detection("GJ038988", (100, 100, 152, 116), 0.83), 1, 40)
+
+        assert track.pixels_per_character == pytest.approx(6.5, abs=0.1)
+        assert not read_is_alertable(track)
+
+    def test_cam18_two_line_plate_is_not_alertable(self):
+        """
+        cam18 flattened a two-line commercial plate into "GJ121181" at 0.466.
+        Different cause from cam10 — the recogniser assumes one line — but the
+        same consequence, and the same measurement rejects it.
+        """
+        track = Track(track_id="cam18")
+        for _ in range(4):
+            track.add(_detection("GJ121181", (200, 300, 249, 316), 0.466), 1, 40)
+
+        assert track.pixels_per_character < MIN_ALERTABLE_PX_PER_CHAR
+        assert not read_is_alertable(track)
+
+    def test_well_resolved_plate_is_alertable(self):
+        """The gate must not suppress reads from cameras sited for the job."""
+        track = Track(track_id="good")
+        track.add(_detection("GJ03HR4879", (0, 0, 220, 60), 0.95), 1, 40)
+
+        assert track.pixels_per_character == pytest.approx(22.0)
+        assert read_is_alertable(track)
+
+    def test_resolution_measured_at_closest_approach(self):
+        """
+        Readability is set by the vehicle's closest frame, not by wherever it
+        happened to be when the track ended. Measuring the last box would let a
+        departing vehicle suppress a read that was clearly resolved on approach.
+        """
+        track = Track(track_id="approach")
+        track.add(_detection("GJ03HR4879", (0, 0, 220, 60), 0.95), 1, 40)
+        track.add(_detection("GJ03HR4879", (0, 0, 40, 12), 0.6), 2, 80)
+
+        assert track.widest_box == 220
+        assert read_is_alertable(track)
+
+    def test_track_without_boxes_is_not_gated(self):
+        """
+        Synthetic reads carry no geometry. The gate abstains rather than
+        rejecting, so it cannot silently disable alerting where no measurement
+        was ever available.
+        """
+        track = Track(track_id="synthetic")
+        track.reads.append(PlateRead("GJ01AB1234", [0.9] * 10))
+
+        assert track.pixels_per_character == 0.0
+        assert read_is_alertable(track)
+
+
+class TestStaticOverlaySuppression:
+    """
+    Burnt-in captions must not be indexed as plates.
+
+    Regression from the 8 September sweep: cam24 returned the caption
+    "Camera 01" 26 times in 45 seconds as C4MPC871 and similar, at 14.2 px per
+    character — the highest resolution measured anywhere on the grid, because a
+    rendered caption is sharper than any real plate. The camera watches an empty
+    street. Evidence: DOCS/evidence/sweep_20260908/.
+    """
+
+    @staticmethod
+    def _bare_detector():
+        """A PlateDetector without loading ONNX models — only the filter is under test."""
+        from app.vision import PlateDetector
+        detector = PlateDetector.__new__(PlateDetector)
+        detector._static_regions = {}
+        return detector
+
+    def test_caption_suppressed_after_repeated_hits(self):
+        from app.vision import STATIC_REGION_HITS
+        detector = self._bare_detector()
+        caption = (690, 508, 810, 532)
+
+        seen = [detector._is_static_furniture(caption, "cam24")
+                for _ in range(STATIC_REGION_HITS + 3)]
+
+        assert not any(seen[:STATIC_REGION_HITS]), "must not suppress before it is proven static"
+        assert all(seen[STATIC_REGION_HITS:]), "must suppress once established"
+
+    def test_moving_vehicle_is_never_suppressed(self):
+        """A vehicle's box sweeps across frame, so it never repeats."""
+        detector = self._bare_detector()
+        suppressed = [detector._is_static_furniture((x, 300, x + 120, 340), "cam24")
+                      for x in range(0, 800, 40)]
+        assert not any(suppressed)
+
+    def test_furniture_is_not_pooled_between_cameras(self):
+        """
+        One detector serves every stream in the worker, so a caption learned on
+        one camera must not suppress a plate at the same coordinates on another.
+        """
+        from app.vision import STATIC_REGION_HITS
+        detector = self._bare_detector()
+        caption = (690, 508, 810, 532)
+        for _ in range(STATIC_REGION_HITS + 2):
+            detector._is_static_furniture(caption, "cam24")
+
+        assert detector._is_static_furniture(caption, "cam24")
+        assert not detector._is_static_furniture(caption, "cam07")
+
+    def test_region_memory_stays_bounded(self):
+        """A busy camera must not grow this list without limit."""
+        detector = self._bare_detector()
+        for i in range(500):
+            detector._is_static_furniture((i * 3, 0, i * 3 + 20, 20), "cam01")
+        assert len(detector._static_regions["cam01"]) <= 64

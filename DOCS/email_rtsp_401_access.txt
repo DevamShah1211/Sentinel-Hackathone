@@ -1,3 +1,15 @@
+========================================================================
+NOT SENT — the fault cleared on its own.
+
+On the morning of 8 September the same unchanged credential returned
+RTSP/1.0 200 OK and all thirty cameras opened. The outage was at the
+gateway, not our credential, so there was nothing to report and this
+draft was never sent.
+
+Kept in the repository as the record of what was observed at the time
+and what was ruled out before we were prepared to report it.
+========================================================================
+
 To:      sentinel.hackathon@gujarat.gov.in
 Subject: RTSP feeds returning 401 Unauthorized since approx 16:30 IST today — same credentials worked earlier
 

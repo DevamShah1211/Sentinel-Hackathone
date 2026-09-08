@@ -350,7 +350,7 @@ A missing prior file scores everything zero, so a fresh deployment behaves
 exactly as it did before this module existed. A recogniser that depends on a
 data file it may not have is one that fails in the field.
 
-## 2f. Sandbox access withdrawn, 7 September 16:30 IST
+## 2f. Sandbox access lost and restored, 7-8 September
 
 A planned re-sweep of all thirty cameras with the improved recogniser could not
 be completed. Every camera now returns an immediate rejection:
@@ -371,7 +371,21 @@ and a raw RTSP DESCRIBE sent by hand outside the application returns the same
 and we send Basic authentication, so the scheme matches. The gateway is running
 and specifically rejecting the credential.
 
-Reported to the organisers; the message is at `DOCS/email_rtsp_401_access.txt`.
+**Resolved, 8 September.** The identical credential — unchanged, still
+`GAQA-H7HN-P2GE` in `backend/.env` — returned `RTSP/1.0 200 OK` on the first
+attempt the next morning, and all thirty cameras opened. So this was a
+gateway-side fault at the organisers' end, not a rotated password and not a
+revoked access list. The drafted report at `DOCS/email_rtsp_401_access.txt` was
+therefore never sent.
+
+Worth recording because the wrong conclusion was the tempting one. An immediate
+401 with a well-formed Basic challenge looks exactly like a rejected credential,
+and our first reading was that the password had been rotated out from under us.
+It had not. The distinguishing evidence was only available by waiting: a
+credential that fails for two hours and then succeeds untouched was never the
+thing at fault. Nothing we could have measured during the outage would have
+separated the two cases, which is the argument for reporting observations to an
+operator rather than inferring a cause and acting on it.
 
 **What this does not affect.** Every measurement in this document was taken
 before the change and the evidence frames are committed. The live demonstration
@@ -507,3 +521,80 @@ The sandbox catalogue (`/cameras.json`, behind a form login) publishes **only
 every camera records `geo_source` and `geo_confidence` so provenance travels with
 the record. Coordinates are approximate site locations, not a surveyed register,
 and the reports say so.
+
+## 2g. Full 30-camera sweep, 8 September 2026, ~10:45-11:35 IST
+
+Access returned on the morning of 8 September (see 2f), so the sweep deferred
+from the previous evening was run: all thirty cameras, 45 seconds each, with the
+completed recogniser — confusion model, refinement pass, RTO data and prior.
+
+**Result: not one correct plate was read anywhere on the grid.**
+
+Three reads validated or nearly validated. All three were wrong, and each failed
+in a different way. That is the finding, and it is worth more than a pass rate.
+
+| Camera | px/char | Pipeline read | Ground truth from the evidence crop | Failure |
+|---|---|---|---|---|
+| cam10 | 6.5 | `GJ038988` @ 0.83 | `GJ03HR4879` | Right state and RTO, **wrong serial** |
+| cam18 | 6.1 | `GJ121181` @ 0.47 | two-line yellow commercial plate | Two rows flattened into one string |
+| cam24 | 14.2 | `C4MPC871` ×26 | the caption "Camera 01" | Burnt-in overlay read as a plate |
+
+Evidence crops: `DOCS/evidence/sweep_20260908/`.
+
+### Why cam10 is the one that matters
+
+`GJ038988` is a legitimate Indian registration format — two letters, two digits,
+no series letters, four digits — so the grammar layer passes it, correctly. The
+state code is real. The RTO code is real. The confidence is 0.83. Every check
+the pipeline had said yes, and the four digits that actually identify the
+vehicle were wrong: `8988` against a true `4879`.
+
+This is the failure mode that matters in a policing system. A read that is
+obviously garbage is harmless because nobody acts on it. A read that is
+well-formed, confident and wrong is one that puts an officer in front of the
+wrong vehicle, and no amount of grammar or confidence tuning detects it, because
+at 6.5 px per character the recogniser is not reading glyphs at all — it is
+producing a plausible shape. It was confident about a hallucination.
+
+**Fix:** `MIN_ALERTABLE_PX_PER_CHAR = 12.0` in `app/vision.py`. A track whose
+plate never exceeded that resolution is indexed as a *partial* — searchable,
+badged, with its evidence crop available for a human to judge — and can never
+raise an alert. The threshold sits above every false positive observed here
+(max 6.9) and below the 15-20 at which reads measured correct 6/6, so it
+separates the two populations actually observed rather than asserting where
+correctness begins. Published guidance asks 20-30; this is deliberately the
+weaker, evidence-backed claim.
+
+### Why cam24 was the most misleading
+
+cam24 measured 14.2 px per character, the **highest on the entire grid** —
+double cam14 and above the alertable threshold. On the ranking it was the
+best-sited camera we had. It watches an empty residential street at 02:27, and
+the "plate" was the caption `Camera 01` burnt into the corner of the frame.
+Rendered text is sharper than any real plate at distance, so overlay furniture
+does not merely produce false reads: it produces the *highest-quality* false
+reads and rises straight to the top of a quality ranking.
+
+**Fix:** static-region suppression in `PlateDetector`. A box recurring at the
+same coordinates beyond `STATIC_REGION_HITS` is furniture, because a caption
+occupies identical pixels in every frame and a vehicle never does. Keyed per
+camera, since one detector instance serves every stream. Verified against the
+live feed: caption detections fell from 26 to 6 in 45 seconds, the remainder
+being the pre-threshold reads before the region is established — deliberate, so
+a genuine plate is never lost to a cold start. Those reads were already rejected
+downstream by the state-code check, so this is defence in depth; its real value
+is that a caption can no longer disguise an empty street as a good ANPR site.
+
+### What the sweep says about the grid
+
+Twenty-six of thirty cameras produced no plate-shaped box at all in 45 seconds.
+The footage is also a loop of recorded video — cam24's burnt-in timestamp reads
+`08-08-2026`, a month before the sweep — so traffic density is whatever was
+recorded, not what is on the road now.
+
+Combined with sections 2b and 2c, the conclusion is unchanged and now measured
+across the whole grid rather than two cameras: **these are wide-area overview
+cameras, and no recogniser reads plates from them.** The constraint is optics
+and siting, which is a procurement decision. It is the single most useful thing
+this project can tell the department, and it is worth more than a demonstration
+tuned to hide it.

@@ -38,7 +38,8 @@ import requests
 
 from app.plate_grammar import correct_plate, plausible_in_gujarat
 from app.settings import settings
-from app.vision import PlateDetector, StreamCapture, TrackManager, aggregate_track
+from app.vision import (MIN_ALERTABLE_PX_PER_CHAR, PlateDetector, StreamCapture,
+                        TrackManager, aggregate_track, read_is_alertable)
 
 logger = logging.getLogger("sentinel.anpr")
 
@@ -63,6 +64,7 @@ class WorkerStats:
     post_failures: int = 0
     rejected_low_confidence: int = 0
     rejected_invalid_format: int = 0
+    indexed_below_resolution: int = 0
     lock: threading.Lock = field(default_factory=threading.Lock)
 
     def bump(self, field_name: str, amount: int = 1) -> None:
@@ -195,11 +197,24 @@ def process_camera(camera: dict, detector: PlateDetector, publisher: DetectionPu
                              native_id, plate_text, plate_text[:2])
                 continue
 
+            # Was the plate ever big enough in frame to be believed? A read
+            # below the resolution threshold is indexed as a partial — it still
+            # narrows a search and its evidence crop can be judged by eye — but
+            # it must never raise an alert. Measured cause: cam10 returned a
+            # grammar-valid "GJ038988" at 0.83 confidence from a plate reading
+            # GJ03HR4879, at 6.5 px per character.
+            alertable = read_is_alertable(track)
+            resolution = track.pixels_per_character
+
             crop_uri = save_evidence_crop(track.best_crop, plate_text, native_id)
             stats.bump("tracks_emitted")
-            logger.info("%s: PLATE %s conf=%.2f reads=%d pts=%dms%s",
+            if not alertable:
+                stats.bump("indexed_below_resolution")
+            logger.info("%s: PLATE %s conf=%.2f reads=%d pts=%dms px/char=%.1f%s%s",
                         native_id, plate_text, confidence, len(track.reads),
-                        track.last_pts_ms, " [corrected]" if grammar.corrections else "")
+                        track.last_pts_ms, resolution,
+                        "" if alertable else " [PARTIAL: below resolution]",
+                        " [corrected]" if grammar.corrections else "")
 
             publisher.submit({
                 "camera_id": camera_id,
@@ -213,7 +228,13 @@ def process_camera(camera: dict, detector: PlateDetector, publisher: DetectionPu
                 "raw_reads": [
                     {"plate": r.text, "conf": round(r.mean_confidence, 4)}
                     for r in track.reads[:20]
-                ],
+                ] + ([] if alertable else [{
+                    "_meta": True, "partial": True,
+                    "reason": f"below readable resolution; {resolution:.1f} px "
+                              f"per character, need {MIN_ALERTABLE_PX_PER_CHAR:.0f}",
+                    "px_per_char": round(resolution, 1),
+                    "source": "camera",
+                }]),
                 "bbox": {"x1": track.bbox[0], "y1": track.bbox[1],
                          "x2": track.bbox[2], "y2": track.bbox[3]},
                 "plate_format": grammar.fmt,
@@ -237,7 +258,7 @@ def process_camera(camera: dict, detector: PlateDetector, publisher: DetectionPu
                 continue
 
             started = time.time()
-            detections = detector.detect(frame)
+            detections = detector.detect(frame, source=native_id)
             capture.stats.inference_seconds += time.time() - started
             capture.stats.frames_inferred += 1
 
