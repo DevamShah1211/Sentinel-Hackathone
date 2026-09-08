@@ -371,8 +371,8 @@ and a raw RTSP DESCRIBE sent by hand outside the application returns the same
 and we send Basic authentication, so the scheme matches. The gateway is running
 and specifically rejecting the credential.
 
-**Resolved, 8 September.** The identical credential — unchanged, still
-`GAQA-H7HN-P2GE` in `backend/.env` — returned `RTSP/1.0 200 OK` on the first
+**Resolved, 8 September.** The identical credential — unchanged in
+`backend/.env` — returned `RTSP/1.0 200 OK` on the first
 attempt the next morning, and all thirty cameras opened. So this was a
 gateway-side fault at the organisers' end, not a rotated password and not a
 revoked access list. The drafted report at `DOCS/email_rtsp_401_access.txt` was
