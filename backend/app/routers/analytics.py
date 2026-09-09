@@ -10,6 +10,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy import func, select, desc, text
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import audit
@@ -18,7 +19,8 @@ from app.security import (
     CurrentPrincipal, Principal, RequireOperator, RequireStateAdmin,
     RequireViewer,
 )
-from app.models import Alert, AuditLog, Camera, Detection, WatchlistEntry
+from app.models import (Alert, AuditLog, Camera, Detection, SceneObservation,
+                        WatchlistEntry)
 from app.gap_analysis import build_gap_report
 from app.reporting import (
     ReportMeta, ReportRow, build_gap_xlsx, build_pdf, build_xlsx,
@@ -380,3 +382,163 @@ async def gap_report_xlsx(
         headers={"Content-Disposition":
                  f'attachment; filename="sentinel_gap_analysis_{stamp}.xlsx"'},
     )
+
+
+# ─── Scene analytics: vehicle, person and object counts ──────────────────────
+
+class SceneObservationIn(BaseModel):
+    """One aggregated minute from a camera."""
+    camera_native_id: str
+    bucket_start: datetime
+    bucket_seconds: int = 60
+    frames_sampled: int = 0
+    counts_by_label: dict[str, int] = {}
+    counts_by_category: dict[str, int] = {}
+    max_confidence: float = 0.0
+
+    model_config = {"extra": "forbid"}
+
+
+@router.post("/scene", summary="Ingest one minute of scene counts")
+async def ingest_scene_observation(
+    body: SceneObservationIn,
+    db: AsyncSession = Depends(get_db),
+    principal: Principal = RequireOperator,
+):
+    """
+    Write one aggregated bucket.
+
+    Guarded like detection ingest: this is analytics about a public place and,
+    while it identifies nobody, it still describes police camera coverage.
+
+    Idempotent on (camera, bucket_start). A worker that restarts mid-minute
+    re-sends the bucket it was building, and re-running an analysis over
+    recorded footage should correct the row rather than duplicate it — which is
+    also why the table carries a unique constraint rather than relying on this
+    check alone.
+    """
+    camera = (await db.execute(
+        select(Camera).where(Camera.native_id == body.camera_native_id)
+    )).scalar_one_or_none()
+    if camera is None:
+        raise HTTPException(404, f"Unknown camera '{body.camera_native_id}'")
+
+    bucket_start = body.bucket_start
+    if bucket_start.tzinfo is None:
+        bucket_start = bucket_start.replace(tzinfo=timezone.utc)
+
+    existing = (await db.execute(
+        select(SceneObservation).where(
+            SceneObservation.camera_id == camera.id,
+            SceneObservation.bucket_start == bucket_start,
+        )
+    )).scalar_one_or_none()
+
+    if existing is not None:
+        existing.frames_sampled = body.frames_sampled
+        existing.counts_by_label = body.counts_by_label
+        existing.counts_by_category = body.counts_by_category
+        existing.max_confidence = body.max_confidence
+        await db.commit()
+        return {"status": "updated", "camera": camera.native_id}
+
+    db.add(SceneObservation(
+        camera_id=camera.id,
+        bucket_start=bucket_start,
+        bucket_seconds=body.bucket_seconds,
+        frames_sampled=body.frames_sampled,
+        counts_by_label=body.counts_by_label,
+        counts_by_category=body.counts_by_category,
+        max_confidence=body.max_confidence,
+    ))
+    await db.commit()
+    return {"status": "created", "camera": camera.native_id}
+
+
+@router.get("/scene/summary", summary="Vehicle and person counts across the grid")
+async def scene_summary(
+    db: AsyncSession = Depends(get_db),
+    hours: int = Query(24, ge=1, le=168),
+    principal: Principal = RequireViewer,
+):
+    """
+    What the cameras have been seeing, aggregated over a window.
+
+    This is the analytics tier that works where ANPR does not. The measured
+    finding in MEASUREMENTS section 2g is that no camera on this grid produces a
+    readable plate, while the same frames contain vehicles and people a detector
+    resolves comfortably — so a deployment that reported only plate reads would
+    report nothing at all from these cameras.
+    """
+    since = datetime.now(timezone.utc) - timedelta(hours=hours)
+
+    rows = (await db.execute(
+        select(SceneObservation.counts_by_category,
+               SceneObservation.counts_by_label,
+               SceneObservation.frames_sampled)
+        .where(SceneObservation.bucket_start >= since)
+    )).all()
+
+    # Peak within a bucket, summed across buckets, is a throughput estimate
+    # rather than a unique-object count — a vehicle standing at a junction for
+    # three minutes is counted three times. Named so nobody reads it as a
+    # vehicle census.
+    observations = {"vehicle": 0, "person": 0}
+    by_label: dict[str, int] = {}
+    frames = 0
+    for by_category, labels, sampled in rows:
+        frames += sampled or 0
+        for key, n in (by_category or {}).items():
+            observations[key] = observations.get(key, 0) + n
+        for key, n in (labels or {}).items():
+            by_label[key] = by_label.get(key, 0) + n
+
+    cameras_reporting = (await db.execute(
+        select(func.count(func.distinct(SceneObservation.camera_id)))
+        .where(SceneObservation.bucket_start >= since)
+    )).scalar() or 0
+
+    return {
+        "window_hours": hours,
+        "buckets": len(rows),
+        "frames_analysed": frames,
+        "cameras_reporting": cameras_reporting,
+        "observations": observations,
+        "by_label": by_label,
+        "note": ("Counts are peak-per-minute summed over the window: a throughput "
+                 "estimate, not a count of distinct vehicles."),
+    }
+
+
+@router.get("/scene/by-camera", summary="Per-camera activity, busiest first")
+async def scene_by_camera(
+    db: AsyncSession = Depends(get_db),
+    hours: int = Query(24, ge=1, le=168),
+    limit: int = Query(30, ge=1, le=200),
+    principal: Principal = RequireViewer,
+):
+    """Which cameras are busy, and which are watching an empty street."""
+    since = datetime.now(timezone.utc) - timedelta(hours=hours)
+
+    rows = (await db.execute(
+        select(SceneObservation.camera_id, Camera.name, Camera.department,
+               SceneObservation.counts_by_category, SceneObservation.frames_sampled)
+        .join(Camera, Camera.id == SceneObservation.camera_id)
+        .where(SceneObservation.bucket_start >= since)
+    )).all()
+
+    per_camera: dict[str, dict] = {}
+    for camera_id, name, department, by_category, sampled in rows:
+        key = str(camera_id)
+        entry = per_camera.setdefault(key, {
+            "camera_id": key, "camera_name": name, "department": department,
+            "vehicles": 0, "people": 0, "frames_analysed": 0, "buckets": 0,
+        })
+        entry["vehicles"] += (by_category or {}).get("vehicle", 0)
+        entry["people"] += (by_category or {}).get("person", 0)
+        entry["frames_analysed"] += sampled or 0
+        entry["buckets"] += 1
+
+    ranked = sorted(per_camera.values(),
+                    key=lambda r: -(r["vehicles"] + r["people"]))
+    return {"window_hours": hours, "cameras": ranked[:limit]}

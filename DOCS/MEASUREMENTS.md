@@ -598,3 +598,84 @@ cameras, and no recogniser reads plates from them.** The constraint is optics
 and siting, which is a procurement decision. It is the single most useful thing
 this project can tell the department, and it is worth more than a demonstration
 tuned to hide it.
+
+## 3. Object detection — the analytics tier that works on these cameras
+
+Section 2g reports that no camera on the government grid produced a correct
+plate: the limit is 4 to 14 pixels per character against the 20-30 ANPR needs,
+and that is optics rather than software. The obvious question follows — if the
+plates cannot be read, is there anything useful in these frames at all?
+
+There is. The same frames contain vehicles and people that a general detector
+resolves comfortably.
+
+### 3a. Measured on real sandbox frames
+
+`rf-detr-nano-384-coco` through ONNX Runtime on CPU, no GPU, on the evidence
+frames captured during the 8 September sweep:
+
+| Frame | Resolution | Inference | Objects found |
+|---|---|---|---|
+| cam10 Char Chowk, Junagadh | 1920×1080 | 79 ms | 2 car, 4 motorcycle, 5 person, 1 truck |
+| cam12 Adalaj toll plaza | 1280×720 | 70 ms | 1 person, 1 truck |
+| cam18 Rajkot | 1920×1080 | 67 ms | 3 person, 1 boat |
+| cam24 residential, 02:27 | 960×576 | 67 ms | **none** |
+
+cam24 is the useful negative. It watches an empty street at night, and the
+detector correctly returns nothing — the same camera whose burnt-in caption the
+plate recogniser read as `C4MPC871` twenty-six times. A detector that finds
+objects in an empty frame would be worse than no detector.
+
+Reproduce: `python tools/scene_analytics.py --camera cam10 --seconds 90`
+
+### 3b. Model choice, measured rather than assumed
+
+On cam10's frame, same machine:
+
+| Model | Inference | Objects |
+|---|---|---|
+| `rf-detr-nano-384-coco` | 66 ms | 12 |
+| `rf-detr-small-512-coco` | 126 ms | 15 |
+
+Nano is 1.9× cheaper and finds 12 of the 15. The three it misses are small and
+distant — objects an operator could not act on anyway. Since the entire argument
+for this tier is that it runs on cameras the ANPR tier cannot serve, cost per
+frame is the property being optimised, and nano is the right default on CPU.
+Small is one argument away for a deployment with GPUs.
+
+### 3c. Why this changes the scaling arithmetic
+
+| Tier | Mean inference | Streams per 20-core machine |
+|---|---|---|
+| Tiled ANPR (§1) | 185.9 ms | ≈26 (measured) |
+| Object detection | 70 ms | ≈69 (projected) |
+
+The ANPR figure is a measured throughput from §1. The detection figure is a
+projection from it, scaled by the ratio of inference cost — 185.9 / 70 = 2.66 —
+and nothing else: same machine, same runtime, same sampling assumption, so the
+only variable is time per frame. It is labelled projected rather than measured
+because a 30-stream detection benchmark has not been run; the honest claim is
+the ratio, not the absolute.
+
+The gap widens further in practice, because the two tiers need different
+sampling. ANPR must see most frames a vehicle is in view or the track breaks and
+the vote has too few reads. Counting how busy a junction is does not: two frames
+a second is generous, which is a further 7× on the sampling side.
+
+That difference — **2.66× on inference cost alone**, and far more once the
+sampling difference is counted — is what makes the tiering in HLD §9.4 a
+strategy rather than a hedge: run object detection everywhere, and reserve ANPR for cameras sited
+well enough to support it. On this grid that would be no cameras at all today,
+which is a procurement finding the department can act on.
+
+### 3d. What is stored, and why it is not per frame
+
+Counts are aggregated into one row per camera per minute before they reach the
+database. At one inference per second across 80,000 cameras, per-frame rows
+would be **6.9 billion a day**; minute buckets are **115 million**, and the write
+rate stops depending on frame rate at all.
+
+Within a bucket the figure kept per class is the **peak in any single frame**,
+not the sum across frames. Summing counts a parked car once per frame — sixty
+times a minute — producing a number that grows with sampling rate rather than
+with traffic. Peak answers the question a junction count is actually asking.

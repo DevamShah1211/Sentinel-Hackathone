@@ -2278,6 +2278,161 @@
         ]
       }
     },
+    "/api/v1/analytics/scene": {
+      "post": {
+        "tags": [
+          "Analytics & Reports"
+        ],
+        "summary": "Ingest one minute of scene counts",
+        "description": "Write one aggregated bucket.\n\nGuarded like detection ingest: this is analytics about a public place and,\nwhile it identifies nobody, it still describes police camera coverage.\n\nIdempotent on (camera, bucket_start). A worker that restarts mid-minute\nre-sends the bucket it was building, and re-running an analysis over\nrecorded footage should correct the row rather than duplicate it — which is\nalso why the table carries a unique constraint rather than relying on this\ncheck alone.",
+        "operationId": "ingest_scene_observation_api_v1_analytics_scene_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SceneObservationIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/analytics/scene/summary": {
+      "get": {
+        "tags": [
+          "Analytics & Reports"
+        ],
+        "summary": "Vehicle and person counts across the grid",
+        "description": "What the cameras have been seeing, aggregated over a window.\n\nThis is the analytics tier that works where ANPR does not. The measured\nfinding in MEASUREMENTS section 2g is that no camera on this grid produces a\nreadable plate, while the same frames contain vehicles and people a detector\nresolves comfortably — so a deployment that reported only plate reads would\nreport nothing at all from these cameras.",
+        "operationId": "scene_summary_api_v1_analytics_scene_summary_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "hours",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 168,
+              "minimum": 1,
+              "default": 24,
+              "title": "Hours"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/analytics/scene/by-camera": {
+      "get": {
+        "tags": [
+          "Analytics & Reports"
+        ],
+        "summary": "Per-camera activity, busiest first",
+        "description": "Which cameras are busy, and which are watching an empty street.",
+        "operationId": "scene_by_camera_api_v1_analytics_scene_by_camera_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "hours",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 168,
+              "minimum": 1,
+              "default": 24,
+              "title": "Hours"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 30,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/ingest/sync": {
       "post": {
         "tags": [
@@ -3512,6 +3667,58 @@
           "password"
         ],
         "title": "LoginRequest"
+      },
+      "SceneObservationIn": {
+        "properties": {
+          "camera_native_id": {
+            "type": "string",
+            "title": "Camera Native Id"
+          },
+          "bucket_start": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Bucket Start"
+          },
+          "bucket_seconds": {
+            "type": "integer",
+            "title": "Bucket Seconds",
+            "default": 60
+          },
+          "frames_sampled": {
+            "type": "integer",
+            "title": "Frames Sampled",
+            "default": 0
+          },
+          "counts_by_label": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Counts By Label",
+            "default": {}
+          },
+          "counts_by_category": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Counts By Category",
+            "default": {}
+          },
+          "max_confidence": {
+            "type": "number",
+            "title": "Max Confidence",
+            "default": 0.0
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "camera_native_id",
+          "bucket_start"
+        ],
+        "title": "SceneObservationIn",
+        "description": "One aggregated minute from a camera."
       },
       "TagRequest": {
         "properties": {

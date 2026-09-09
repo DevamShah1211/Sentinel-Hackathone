@@ -12,8 +12,8 @@ from typing import Optional
 
 from geoalchemy2 import Geography
 from sqlalchemy import (
-    BigInteger, Boolean, Column, DateTime, Float, ForeignKey,
-    Integer, String, Text, func, JSON, Enum as SAEnum
+    BigInteger, Boolean, Column, DateTime, Float, ForeignKey, Index,
+    Integer, String, Text, UniqueConstraint, func, JSON, Enum as SAEnum
 )
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
@@ -102,6 +102,65 @@ class Detection(Base):
 
     camera       = relationship("Camera", back_populates="detections")
     alert        = relationship("Alert", back_populates="detection", uselist=False)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SCENE ANALYTICS  (vehicle / person / object detection)
+# ─────────────────────────────────────────────────────────────────────────────
+
+class SceneObservation(Base):
+    """
+    What a camera saw, as counts per class over a time bucket.
+
+    Separate from `detections` on purpose. A detection is one vehicle, identified,
+    and is evidence about that vehicle. A scene observation is a count — seven
+    vehicles and five people in this minute at this camera — and is evidence
+    about a place. Storing counts as rows in `detections` would mean a
+    plate-shaped table full of records with no plate, and every plate query
+    would then have to exclude them.
+
+    **Bucketed, not per frame.** At one frame per second across 80,000 cameras,
+    per-frame rows would be 6.9 billion a day. A minute bucket is 1.4% of that
+    and answers every question an operator actually asks: how busy was this
+    junction, when did footfall peak, was anything moving at 3 a.m. The frames
+    within a bucket are aggregated by the worker before they ever reach the
+    database, so the write rate is bounded by camera count rather than by frame
+    rate — which is what makes this tier scale.
+
+    Retention differs from detections for the same reason: counts age into
+    statistics, so they compress well and can move to cold storage on a shorter
+    schedule than evidentiary plate records.
+    """
+    __tablename__ = "scene_observations"
+
+    id          = uuid_pk()
+    camera_id   = Column(UUID(as_uuid=True), ForeignKey("cameras.id"),
+                         nullable=False, index=True)
+    # Start of the bucket, truncated to the minute, in UTC.
+    bucket_start = Column(DateTime(timezone=True), nullable=False, index=True)
+    bucket_seconds = Column(Integer, nullable=False, default=60)
+
+    # Frames actually inferred in this bucket. Without it a count of zero is
+    # ambiguous — nothing was there, or nothing was looked at.
+    frames_sampled = Column(Integer, nullable=False, default=0)
+
+    # Peak simultaneous count per class within the bucket, and per category.
+    # Peak rather than sum: summing across frames counts the same parked car
+    # sixty times, which is not a number anyone wants.
+    counts_by_label    = Column(JSONB, default=dict, nullable=False, server_default="{}")
+    counts_by_category = Column(JSONB, default=dict, nullable=False, server_default="{}")
+
+    # Highest confidence seen in the bucket, for triaging a quiet camera.
+    max_confidence = Column(Float, nullable=False, default=0.0)
+
+    camera = relationship("Camera")
+
+    __table_args__ = (
+        # The query this table exists to serve is "this camera, this window",
+        # and the uniqueness stops a restarted worker double-writing a bucket.
+        UniqueConstraint("camera_id", "bucket_start", name="uq_scene_camera_bucket"),
+        Index("ix_scene_camera_time", "camera_id", "bucket_start"),
+    )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
