@@ -209,3 +209,30 @@ class TestDeletedAccountsLoseAccess:
         source = inspect.getsource(security.current_principal)
         assert "if user is None:" in source
         assert "role=user.role" in source, "role must come from the row, not the claim"
+
+
+class TestAlertStreamIsAuthenticated:
+    """
+    The live alert WebSocket streamed every watchlist match — plate, camera,
+    severity, case reference — to anyone who could open a socket. Active police
+    case data, unauthenticated.
+
+    It was missed by the first audit because it is declared in main.py rather
+    than in a router, so the sweep over app/routers/ never saw it. Worth
+    recording: an access audit is only as complete as its file list.
+    """
+
+    def test_websocket_route_takes_a_token(self):
+        import inspect
+        import main
+        params = inspect.signature(main.alerts_websocket).parameters
+        assert "token" in params, "the alert stream must authenticate"
+
+    def test_invalid_token_is_rejected_when_auth_is_on(self):
+        import inspect
+        import main
+        source = inspect.getsource(main.alerts_websocket)
+        # Closed with a policy-violation code rather than accepted and ignored.
+        assert "1008" in source
+        assert "jwt.decode" in source
+        assert "settings.auth_enabled" in source

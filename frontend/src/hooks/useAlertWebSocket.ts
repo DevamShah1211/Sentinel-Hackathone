@@ -1,3 +1,4 @@
+import { getToken } from '../api/client'
 import { useEffect, useRef, useState, useCallback } from 'react'
 
 export interface LiveAlert {
@@ -14,7 +15,15 @@ export interface LiveAlert {
     matched_at: string
 }
 
-const WS_URL = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/ws/alerts`
+// The token goes in the query string because the browser WebSocket API cannot
+// set an Authorization header. Built per connection rather than once at module
+// load, so a reconnect after signing in again carries the new token.
+const wsUrl = () => {
+    const scheme = window.location.protocol === 'https:' ? 'wss' : 'ws'
+    const token = getToken()
+    return `${scheme}://${window.location.host}/ws/alerts`
+        + (token ? `?token=${encodeURIComponent(token)}` : '')
+}
 
 export type WsStatus = 'connecting' | 'live' | 'reconnecting'
 
@@ -35,7 +44,7 @@ export function useAlertWebSocket() {
         // Reusing a socket that is already open or opening avoids that entirely.
         const existing = ws.current?.readyState
         if (existing === WebSocket.OPEN || existing === WebSocket.CONNECTING) return
-        ws.current = new WebSocket(WS_URL)
+        ws.current = new WebSocket(wsUrl())
 
         ws.current.onopen = () => {
             setConnected(true)

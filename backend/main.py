@@ -6,7 +6,8 @@ import asyncio
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Query, WebSocket, WebSocketDisconnect
+from jose import JWTError, jwt
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import os
@@ -117,7 +118,33 @@ app.mount("/evidence", StaticFiles(directory=settings.evidence_crop_dir), name="
 
 # ─── WebSocket — live alerts ──────────────────────────────────────────────────
 @app.websocket("/ws/alerts")
-async def alerts_websocket(websocket: WebSocket):
+async def alerts_websocket(websocket: WebSocket, token: str = Query("")):
+    """
+    Live watchlist alerts.
+
+    Authenticated by a token in the query string, because the browser
+    WebSocket API cannot set an Authorization header — the same constraint
+    that applies to <img> and <video>, and the standard workaround.
+
+    This route was previously open. It streams every watchlist match as it is
+    raised: plate, camera, severity and case reference, which is active police
+    case data delivered to anyone who could open a socket. The rest of the API
+    was guarded; this was missed because it is declared in main.py rather than
+    in a router, and so was not in the file the access audit walked.
+    """
+    if settings.auth_enabled:
+        try:
+            payload = jwt.decode(token, settings.secret_key,
+                                 algorithms=[settings.algorithm])
+        except JWTError:
+            # 1008 is "policy violation" — the closest close-code to a 401,
+            # and what a browser client can actually observe.
+            await websocket.close(code=1008, reason="Authentication required")
+            return
+        if not payload.get("sub"):
+            await websocket.close(code=1008, reason="Authentication required")
+            return
+
     await ws_manager.connect(websocket)
     try:
         while True:

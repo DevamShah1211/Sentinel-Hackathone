@@ -1,0 +1,2400 @@
+openapi: 3.1.0
+info:
+  title: Sentinel CCTV Platform
+  description: '**Gujarat CCTV Integration Hackathon 2026 — Category 1**
+
+
+    Model 1 (Camera Registry & GIS Mapping) + Model 2 (Unified Viewing Platform + ANPR).
+
+
+    Connects to the Sentinel sandbox, reads cameras from `/api/ingest`, provides live HLS/WebRTC viewing,
+    ANPR detection indexing with fuzzy plate search, watchlist matching, real-time alerts, and route reconstruction
+    on a GIS map.'
+  version: 1.0.0
+paths:
+  /api/v1/auth/token:
+    post:
+      tags:
+      - Auth
+      summary: Login (OAuth2 form) — returns a JWT
+      operationId: login_form_api_v1_auth_token_post
+      requestBody:
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Body_login_form_api_v1_auth_token_post'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Token'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/auth/login:
+    post:
+      tags:
+      - Auth
+      summary: Login (JSON) — returns a JWT
+      operationId: login_json_api_v1_auth_login_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Token'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/auth/me:
+    get:
+      tags:
+      - Auth
+      summary: The authenticated user
+      operationId: me_api_v1_auth_me_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserOut'
+      security:
+      - HTTPBearer: []
+  /api/v1/auth/roles:
+    get:
+      tags:
+      - Auth
+      summary: The role model and what each role may do
+      description: Documents the role model so it can be shown, not just asserted.
+      operationId: roles_api_v1_auth_roles_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+  /api/v1/auth/register:
+    post:
+      tags:
+      - Auth
+      summary: Create a user (state admin only)
+      operationId: register_api_v1_auth_register_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserCreate'
+        required: true
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserOut'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - HTTPBearer: []
+  /api/v1/cameras:
+    get:
+      tags:
+      - Cameras (Model 1)
+      summary: List all cameras (paginated)
+      operationId: list_cameras_api_v1_cameras_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: department
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Department
+      - name: status
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Status
+      - name: codec
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Codec
+      - name: live_only
+        in: query
+        required: false
+        schema:
+          type: boolean
+          default: false
+          title: Live Only
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 1000
+          default: 200
+          title: Limit
+      - name: offset
+        in: query
+        required: false
+        schema:
+          type: integer
+          default: 0
+          title: Offset
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CameraOut'
+                title: Response List Cameras Api V1 Cameras Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    post:
+      tags:
+      - Cameras (Model 1)
+      summary: Create a camera record manually
+      operationId: create_camera_api_v1_cameras_post
+      security:
+      - HTTPBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CameraCreate'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CameraOut'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/cameras/geojson:
+    get:
+      tags:
+      - Cameras (Model 1)
+      summary: All cameras as GeoJSON FeatureCollection (for map)
+      description: Returns GeoJSON FeatureCollection for Leaflet / MapLibre.
+      operationId: cameras_geojson_api_v1_cameras_geojson_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: department
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Department
+      - name: live_only
+        in: query
+        required: false
+        schema:
+          type: boolean
+          default: false
+          title: Live Only
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/cameras/stats:
+    get:
+      tags:
+      - Cameras (Model 1)
+      summary: Department-wise camera statistics
+      operationId: camera_stats_api_v1_cameras_stats_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+  /api/v1/cameras/live/{native_id}:
+    get:
+      tags:
+      - Cameras (Model 1)
+      summary: Live MJPEG stream for a camera
+      description: 'Stream a camera as MJPEG.
+
+
+        Every browser plays this in a plain `<img src=...>` with no player library.
+
+        One upstream RTSP connection is shared by all viewers of a camera, so a
+
+        nine-tile wall costs the gateway nine connections rather than nine per client.'
+      operationId: live_stream_api_v1_cameras_live__native_id__get
+      parameters:
+      - name: native_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Native Id
+      - name: profile
+        in: query
+        required: false
+        schema:
+          type: string
+          pattern: ^(high|balanced|low)$
+          description: high = maximised tile, balanced = 2x2, low = 3x3
+          default: balanced
+          title: Profile
+        description: high = maximised tile, balanced = 2x2, low = 3x3
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/cameras/live/{native_id}/snapshot:
+    get:
+      tags:
+      - Cameras (Model 1)
+      summary: Single current frame from a camera
+      description: One JPEG — for map popups and previews, where a full stream is wasteful.
+      operationId: live_snapshot_api_v1_cameras_live__native_id__snapshot_get
+      parameters:
+      - name: native_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Native Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/cameras/live-status:
+    get:
+      tags:
+      - Cameras (Model 1)
+      summary: Relay status per camera
+      description: What the relay is currently doing — useful when a tile will not play.
+      operationId: live_status_api_v1_cameras_live_status_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+  /api/v1/cameras/{camera_id}:
+    get:
+      tags:
+      - Cameras (Model 1)
+      summary: Get camera by UUID
+      operationId: get_camera_api_v1_cameras__camera_id__get
+      parameters:
+      - name: camera_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Camera Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CameraOut'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    patch:
+      tags:
+      - Cameras (Model 1)
+      summary: Update a camera record
+      operationId: update_camera_api_v1_cameras__camera_id__patch
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: camera_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Camera Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CameraUpdate'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CameraOut'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/cameras/proxy-hls/{native_id}/{file_name}:
+    get:
+      tags:
+      - Cameras (Model 1)
+      summary: Proxy authenticated HLS stream segments
+      description: 'Serve a sandbox HLS playlist or segment on the platform''s own origin.
+
+
+        The sandbox requires a session cookie, and the browser must never hold one:
+
+        embedding credentials in a stream URL would ship the sandbox password to every
+
+        client that loads the video wall. This endpoint holds the session server-side
+
+        and the browser talks only to us.
+
+
+        Playlists are rewritten so segment references point back through this proxy;
+
+        otherwise the player would resolve them against the sandbox origin and be
+
+        refused for want of a cookie.'
+      operationId: proxy_hls_stream_api_v1_cameras_proxy_hls__native_id___file_name__get
+      parameters:
+      - name: native_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Native Id
+      - name: file_name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: File Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/cameras/bulk-import:
+    post:
+      tags:
+      - Cameras (Model 1)
+      summary: Bulk camera onboarding from CSV
+      description: "Onboard many cameras at once from a CSV.\n\nThe problem statement asks for \"bulk\
+        \ import, manual entry, and API-based\ncamera onboarding\"; this is the first, POST /cameras is\
+        \ the second, and the\ncatalogue sync is the third.\n\nRecognised columns (only native_id and\
+        \ name are required):\n\n    native_id,name,department,lat,lon,address,rtsp_url,codec,resolution,\n\
+        \    camera_type,make,model,connectivity,installation_date,ownership\n\nRows are validated individually\
+        \ and a bad row never aborts the import — the\nresponse reports which rows failed and why, so\
+        \ a department can fix twelve\nlines rather than resubmit a thousand. dry_run=true validates and\
+        \ writes\nnothing, which is how you would check a file before committing it."
+      operationId: bulk_import_cameras_api_v1_cameras_bulk_import_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: dry_run
+        in: query
+        required: false
+        schema:
+          type: boolean
+          description: Validate without writing
+          default: false
+          title: Dry Run
+        description: Validate without writing
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Body_bulk_import_cameras_api_v1_cameras_bulk_import_post'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/cameras/bulk-import/template:
+    get:
+      tags:
+      - Cameras (Model 1)
+      summary: CSV template for bulk onboarding
+      description: A ready-to-fill CSV with the recognised columns and one worked example.
+      operationId: bulk_import_template_api_v1_cameras_bulk_import_template_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+  /api/v1/cameras/health-status:
+    get:
+      tags:
+      - Cameras (Model 1)
+      summary: Camera health and maintenance status
+      description: 'Per-camera health, as the registry can actually determine it.
+
+
+        A camera is offline if it has never been contacted, stale if it has not been
+
+        seen for a day, and operational otherwise. Anything the registry does not
+
+        know is reported as unknown rather than assumed good.'
+      operationId: camera_health_api_v1_cameras_health_status_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+      security:
+      - HTTPBearer: []
+  /api/v1/detections:
+    get:
+      tags:
+      - Detections / ANPR (Model 2)
+      summary: Search detections by plate / time / camera
+      description: 'Search detections. With fuzzy=true uses pg_trgm similarity (tolerates one bad character).
+
+        Always joins camera name/location for display.'
+      operationId: search_detections_api_v1_detections_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: plate
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: Plate text — exact, partial, or fuzzy
+          title: Plate
+        description: Plate text — exact, partial, or fuzzy
+      - name: camera_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Camera Id
+      - name: from_dt
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: From Dt
+      - name: to_dt
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: To Dt
+      - name: fuzzy
+        in: query
+        required: false
+        schema:
+          type: boolean
+          description: Use pg_trgm fuzzy match
+          default: true
+          title: Fuzzy
+        description: Use pg_trgm fuzzy match
+      - name: tag
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: Only detections carrying this event tag
+          title: Tag
+        description: Only detections carrying this event tag
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 500
+          default: 100
+          title: Limit
+      - name: offset
+        in: query
+        required: false
+        schema:
+          type: integer
+          default: 0
+          title: Offset
+      - name: purpose
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: Why — recorded in the audit log
+          title: Purpose
+        description: Why — recorded in the audit log
+      - name: case_ref
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Case Ref
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DetectionOut'
+                title: Response Search Detections Api V1 Detections Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    post:
+      tags:
+      - Detections / ANPR (Model 2)
+      summary: Ingest a new detection (called by ANPR worker)
+      description: 'Ingest one detection from the ANPR worker.
+
+
+        Guarded because the detection index is the evidentiary record. Unprotected,
+
+        this route let anyone place any registration at any camera at any timestamp
+
+        — which forges the route reconstruction, the exported report, and the
+
+        watchlist alert that fires from it. The worker authenticates like any other
+
+        client; see SENTINEL_WORKER_TOKEN in anpr_worker.py.'
+      operationId: create_detection_api_v1_detections_post
+      security:
+      - HTTPBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DetectionCreate'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                title: Response Create Detection Api V1 Detections Post
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/detections/route/{plate_text}:
+    get:
+      tags:
+      - Detections / ANPR (Model 2)
+      summary: Route reconstruction — all sightings of a plate ordered by time
+      description: 'Returns sorted sightings + computed speed between consecutive cameras.
+
+        Flags physically impossible transitions (>150 km/h).'
+      operationId: plate_route_api_v1_detections_route__plate_text__get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: plate_text
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Plate Text
+      - name: from_dt
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: From Dt
+      - name: to_dt
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: To Dt
+      - name: purpose
+        in: query
+        required: false
+        schema:
+          type: string
+          description: Why — recorded in the audit log
+          default: investigation
+          title: Purpose
+        description: Why — recorded in the audit log
+      - name: case_ref
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Case Ref
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/detections/recent:
+    get:
+      tags:
+      - Detections / ANPR (Model 2)
+      summary: Most recent 50 detections across all cameras
+      operationId: recent_detections_api_v1_detections_recent_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+      security:
+      - HTTPBearer: []
+  /api/v1/detections/tags:
+    get:
+      tags:
+      - Detections / ANPR (Model 2)
+      summary: Tags in use, with counts
+      description: 'Every tag currently applied, with how many detections carry it.
+
+
+        Drives the filter list in the operator UI, so it reflects what the control
+
+        room actually uses rather than what was imagined up front.'
+      operationId: list_tags_api_v1_detections_tags_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+  /api/v1/detections/{detection_id}/tags:
+    post:
+      tags:
+      - Detections / ANPR (Model 2)
+      summary: Tag a detection
+      description: 'Apply event tags to a detection.
+
+
+        Tags are merged rather than replaced, so two operators working the same
+
+        incident do not overwrite each other. Tagging is audited: it is an
+
+        operator''s assertion about a vehicle, and the trail should say who made it.'
+      operationId: tag_detection_api_v1_detections__detection_id__tags_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: detection_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Detection Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TagRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/detections/{detection_id}/tags/{tag}:
+    delete:
+      tags:
+      - Detections / ANPR (Model 2)
+      summary: Remove one tag
+      operationId: untag_detection_api_v1_detections__detection_id__tags__tag__delete
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: detection_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Detection Id
+      - name: tag
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Tag
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/watchlist:
+    get:
+      tags:
+      - Watchlist (Model 2)
+      summary: List watchlist entries
+      operationId: list_watchlist_api_v1_watchlist_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: active_only
+        in: query
+        required: false
+        schema:
+          type: boolean
+          default: true
+          title: Active Only
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          default: 200
+          title: Limit
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/WatchlistOut'
+                title: Response List Watchlist Api V1 Watchlist Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    post:
+      tags:
+      - Watchlist (Model 2)
+      summary: Add a plate to the watchlist
+      operationId: add_to_watchlist_api_v1_watchlist_post
+      security:
+      - HTTPBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WatchlistCreate'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WatchlistOut'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/watchlist/{entry_id}:
+    delete:
+      tags:
+      - Watchlist (Model 2)
+      summary: Deactivate a watchlist entry
+      operationId: remove_from_watchlist_api_v1_watchlist__entry_id__delete
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: entry_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entry Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/watchlist/bulk-import:
+    post:
+      tags:
+      - Watchlist (Model 2)
+      summary: Bulk import plates from CSV (plate,reason,severity,case_ref)
+      operationId: bulk_import_api_v1_watchlist_bulk_import_post
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Body_bulk_import_api_v1_watchlist_bulk_import_post'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - HTTPBearer: []
+  /api/v1/alerts:
+    get:
+      tags:
+      - Alerts (Model 2)
+      summary: List alerts, newest first
+      operationId: list_alerts_api_v1_alerts_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: status
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: new / ack / resolved
+          title: Status
+        description: new / ack / resolved
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 500
+          default: 100
+          title: Limit
+      - name: offset
+        in: query
+        required: false
+        schema:
+          type: integer
+          default: 0
+          title: Offset
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AlertOut'
+                title: Response List Alerts Api V1 Alerts Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/alerts/{alert_id}/acknowledge:
+    patch:
+      tags:
+      - Alerts (Model 2)
+      summary: Acknowledge an alert
+      description: 'Record that a named officer has taken responsibility for an alert.
+
+
+        The acknowledger is taken from the authenticated principal. It used to be a
+
+        query parameter defaulting to "operator", which meant the caller chose the
+
+        name recorded against the action — so the acknowledgement trail recorded
+
+        whatever an unauthenticated client typed. An audit record that the subject
+
+        of the audit can author is not an audit record.'
+      operationId: acknowledge_alert_api_v1_alerts__alert_id__acknowledge_patch
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: alert_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Alert Id
+      - name: notes
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Notes
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/alerts/{alert_id}/resolve:
+    patch:
+      tags:
+      - Alerts (Model 2)
+      summary: Resolve an alert
+      operationId: resolve_alert_api_v1_alerts__alert_id__resolve_patch
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: alert_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Alert Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/alerts/stats:
+    get:
+      tags:
+      - Alerts (Model 2)
+      summary: Alert counts by status and severity
+      operationId: alert_stats_api_v1_alerts_stats_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+      security:
+      - HTTPBearer: []
+  /api/v1/analytics/summary:
+    get:
+      tags:
+      - Analytics & Reports
+      summary: Platform-wide dashboard summary
+      operationId: summary_api_v1_analytics_summary_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+      security:
+      - HTTPBearer: []
+  /api/v1/analytics/top-plates:
+    get:
+      tags:
+      - Analytics & Reports
+      summary: Most frequently detected plates
+      operationId: top_plates_api_v1_analytics_top_plates_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 200
+          default: 20
+          title: Limit
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/analytics/detections-by-hour:
+    get:
+      tags:
+      - Analytics & Reports
+      summary: Detections per camera per hour (last 24h)
+      operationId: detections_by_hour_api_v1_analytics_detections_by_hour_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+      security:
+      - HTTPBearer: []
+  /api/v1/analytics/report/xlsx:
+    get:
+      tags:
+      - Analytics & Reports
+      summary: Output report as XLSX (required submission artefact)
+      operationId: download_xlsx_api_v1_analytics_report_xlsx_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: from_dt
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: From Dt
+      - name: to_dt
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: To Dt
+      - name: plate
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: Restrict to one plate
+          title: Plate
+        description: Restrict to one plate
+      - name: camera_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: Restrict to one camera (native id)
+          title: Camera Id
+        description: Restrict to one camera (native id)
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 50000
+          default: 10000
+          title: Limit
+      - name: purpose
+        in: query
+        required: false
+        schema:
+          type: string
+          description: Why — recorded in the audit log
+          default: hackathon-demonstration
+          title: Purpose
+        description: Why — recorded in the audit log
+      - name: case_ref
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Case Ref
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/analytics/report/pdf:
+    get:
+      tags:
+      - Analytics & Reports
+      summary: Output report as PDF (required submission artefact)
+      operationId: download_pdf_api_v1_analytics_report_pdf_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: from_dt
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: From Dt
+      - name: to_dt
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: To Dt
+      - name: plate
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Plate
+      - name: camera_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Camera Id
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 50000
+          default: 10000
+          title: Limit
+      - name: purpose
+        in: query
+        required: false
+        schema:
+          type: string
+          default: hackathon-demonstration
+          title: Purpose
+      - name: case_ref
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Case Ref
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/analytics/audit:
+    get:
+      tags:
+      - Analytics & Reports
+      summary: Audit trail — who searched or exported what, and why
+      operationId: audit_trail_api_v1_analytics_audit_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 1000
+          default: 200
+          title: Limit
+      - name: action
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Action
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/analytics/vehicle/{plate_text}:
+    get:
+      tags:
+      - Analytics & Reports
+      summary: Vehicle particulars for a plate (VAHAN adapter)
+      description: 'Enrich a plate with owner and vehicle details.
+
+
+        VAHAN is a closed system with no access route for this prototype, so the
+
+        adapter is contract-first and backed by a documented mock. Every response
+
+        states its `source`; a `source` of "mock" is synthetic and must not be treated
+
+        as authoritative. See DOCS/HLD.md §10 for what changes on credential grant.'
+      operationId: vehicle_lookup_api_v1_analytics_vehicle__plate_text__get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: plate_text
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Plate Text
+      - name: purpose
+        in: query
+        required: false
+        schema:
+          type: string
+          description: Why — recorded in the audit log
+          default: investigation
+          title: Purpose
+        description: Why — recorded in the audit log
+      - name: case_ref
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Case Ref
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/analytics/gap-report:
+    get:
+      tags:
+      - Analytics & Reports
+      summary: Coverage gap and ageing-infrastructure analysis
+      description: 'Where the estate is thin, and which cameras need attention.
+
+
+        The problem statement asks for "gap-analysis reports for uncovered zones and
+
+        ageing infrastructure"; both halves are computed from the registry. See
+
+        app/gap_analysis.py for how coverage and condition are determined, and what
+
+        is deliberately reported as unknown rather than assumed healthy.'
+      operationId: gap_report_api_v1_analytics_gap_report_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+      security:
+      - HTTPBearer: []
+  /api/v1/analytics/gap-report/xlsx:
+    get:
+      tags:
+      - Analytics & Reports
+      summary: Gap-analysis report as XLSX (deliverable)
+      operationId: gap_report_xlsx_api_v1_analytics_gap_report_xlsx_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+      security:
+      - HTTPBearer: []
+  /api/v1/ingest/sync:
+    post:
+      tags:
+      - Ingest / Catalogue Sync
+      summary: Re-sync the camera registry from the sandbox catalogue
+      operationId: sync_catalogue_api_v1_ingest_sync_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: geocode
+        in: query
+        required: false
+        schema:
+          type: boolean
+          description: Resolve missing locations via Nominatim
+          default: true
+          title: Geocode
+        description: Resolve missing locations via Nominatim
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/ingest/catalogue:
+    get:
+      tags:
+      - Ingest / Catalogue Sync
+      summary: Raw catalogue as published by the sandbox
+      operationId: get_raw_catalogue_api_v1_ingest_catalogue_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+      security:
+      - HTTPBearer: []
+  /api/v1/ingest/status:
+    get:
+      tags:
+      - Ingest / Catalogue Sync
+      summary: Ingest and registry status
+      operationId: ingest_status_api_v1_ingest_status_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+  /api/health:
+    get:
+      tags:
+      - Health
+      summary: Health
+      description: 'Component health.
+
+
+        Reports what is actually reachable rather than returning a constant ''ok'' —
+
+        a health endpoint that cannot fail tells an operator nothing. Degraded means
+
+        the API is serving but something it depends on is not.'
+      operationId: health_api_health_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+components:
+  schemas:
+    AlertOut:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        watchlist_id:
+          type: string
+          format: uuid
+          title: Watchlist Id
+        detection_id:
+          type: string
+          format: uuid
+          title: Detection Id
+        matched_at:
+          type: string
+          format: date-time
+          title: Matched At
+        match_type:
+          type: string
+          title: Match Type
+        score:
+          type: number
+          title: Score
+        status:
+          type: string
+          title: Status
+        acknowledged_by:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Acknowledged By
+        acknowledged_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Acknowledged At
+        notes:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Notes
+        plate_text:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Plate Text
+        reason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Reason
+        severity:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Severity
+        case_ref:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Case Ref
+        camera_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Camera Name
+        camera_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Camera Id
+        crop_uri:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Crop Uri
+        detected_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Detected At
+      type: object
+      required:
+      - id
+      - watchlist_id
+      - detection_id
+      - matched_at
+      - match_type
+      - score
+      - status
+      - acknowledged_by
+      - acknowledged_at
+      - notes
+      title: AlertOut
+    Body_bulk_import_api_v1_watchlist_bulk_import_post:
+      properties:
+        file:
+          type: string
+          format: binary
+          title: File
+      type: object
+      required:
+      - file
+      title: Body_bulk_import_api_v1_watchlist_bulk_import_post
+    Body_bulk_import_cameras_api_v1_cameras_bulk_import_post:
+      properties:
+        file:
+          type: string
+          format: binary
+          title: File
+      type: object
+      required:
+      - file
+      title: Body_bulk_import_cameras_api_v1_cameras_bulk_import_post
+    Body_login_form_api_v1_auth_token_post:
+      properties:
+        grant_type:
+          anyOf:
+          - type: string
+            pattern: password
+          - type: 'null'
+          title: Grant Type
+        username:
+          type: string
+          title: Username
+        password:
+          type: string
+          title: Password
+        scope:
+          type: string
+          title: Scope
+          default: ''
+        client_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Client Id
+        client_secret:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Client Secret
+      type: object
+      required:
+      - username
+      - password
+      title: Body_login_form_api_v1_auth_token_post
+    CameraCreate:
+      properties:
+        native_id:
+          type: string
+          title: Native Id
+        name:
+          type: string
+          title: Name
+        department:
+          type: string
+          title: Department
+          default: Unknown
+        lat:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Lat
+        lon:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Lon
+        address:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Address
+        rtsp_url:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Rtsp Url
+        hls_url:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Hls Url
+        whep_url:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Whep Url
+        codec:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Codec
+          default: h264
+        resolution:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Resolution
+        camera_type:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Camera Type
+          default: fixed_dome
+        make:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Make
+        model:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Model
+        connectivity:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Connectivity
+      type: object
+      required:
+      - native_id
+      - name
+      title: CameraCreate
+    CameraOut:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        native_id:
+          type: string
+          title: Native Id
+        name:
+          type: string
+          title: Name
+        department:
+          type: string
+          title: Department
+        lat:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Lat
+        lon:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Lon
+        address:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Address
+        live_url:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Live Url
+        snapshot_url:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Snapshot Url
+        hls_url:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Hls Url
+        codec:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Codec
+        resolution:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Resolution
+        fps:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Fps
+        status:
+          type: string
+          title: Status
+        is_live:
+          type: boolean
+          title: Is Live
+        camera_type:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Camera Type
+        make:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Make
+        model:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Model
+        connectivity:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Connectivity
+        geo_source:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Geo Source
+        geo_confidence:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Geo Confidence
+        district:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: District
+      type: object
+      required:
+      - id
+      - native_id
+      - name
+      - department
+      - lat
+      - lon
+      - address
+      - hls_url
+      - codec
+      - resolution
+      - fps
+      - status
+      - is_live
+      - camera_type
+      - make
+      - model
+      - connectivity
+      title: CameraOut
+    CameraUpdate:
+      properties:
+        name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Name
+        department:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Department
+        address:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Address
+        district:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: District
+        lat:
+          anyOf:
+          - type: number
+            maximum: 90.0
+            minimum: -90.0
+          - type: 'null'
+          title: Lat
+        lon:
+          anyOf:
+          - type: number
+            maximum: 180.0
+            minimum: -180.0
+          - type: 'null'
+          title: Lon
+        is_live:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Is Live
+        codec:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Codec
+        geo_source:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Geo Source
+        geo_confidence:
+          anyOf:
+          - type: number
+            maximum: 1.0
+            minimum: 0.0
+          - type: 'null'
+          title: Geo Confidence
+      additionalProperties: false
+      type: object
+      title: CameraUpdate
+      description: 'The fields an administrator may change on a camera record.
+
+
+        Explicitly enumerated, and the stream URLs are deliberately absent. The
+
+        previous signature took an untyped `dict` and assigned any attribute the
+
+        model happened to have, which made every column writable — including
+
+        `rtsp_url`. Two things followed from that: the registry could be falsified
+
+        by moving a camera''s coordinates, and, more seriously, an attacker could
+
+        repoint a camera at a host of their choosing and have the relay fetch it,
+
+        serving their video to operators as a live government feed and turning the
+
+        server into a request proxy for internal addresses.
+
+
+        Stream URLs come from the catalogue sync, which is the only thing that
+
+        should be setting them.'
+    DetectionCreate:
+      properties:
+        camera_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Camera Id
+        camera_native_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Camera Native Id
+        plate_text:
+          type: string
+          title: Plate Text
+        confidence:
+          type: number
+          title: Confidence
+          default: 0.0
+        pts_ms:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Pts Ms
+        track_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Track Id
+        crop_uri:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Crop Uri
+        vehicle_type:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Vehicle Type
+        raw_reads:
+          items:
+            additionalProperties: true
+            type: object
+          type: array
+          title: Raw Reads
+          default: []
+        bbox:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Bbox
+        plate_format:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Plate Format
+        grammar_corrections:
+          type: integer
+          title: Grammar Corrections
+          default: 0
+        detected_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Detected At
+      type: object
+      required:
+      - plate_text
+      title: DetectionCreate
+      description: 'Payload written by the ANPR worker.
+
+
+        `camera_id` may be omitted when `camera_native_id` is supplied, so the worker
+
+        can post using the sandbox''s own camera id without first resolving our UUID.'
+    DetectionOut:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        camera_id:
+          type: string
+          format: uuid
+          title: Camera Id
+        plate_text:
+          type: string
+          title: Plate Text
+        confidence:
+          type: number
+          title: Confidence
+        pts_ms:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Pts Ms
+        detected_at:
+          type: string
+          format: date-time
+          title: Detected At
+        track_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Track Id
+        crop_uri:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Crop Uri
+        vehicle_type:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Vehicle Type
+        tags:
+          items:
+            type: string
+          type: array
+          title: Tags
+          default: []
+        notes:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Notes
+        partial:
+          type: boolean
+          title: Partial
+          default: false
+        district:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: District
+        city:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: City
+        rto_valid:
+          type: boolean
+          title: Rto Valid
+          default: true
+        camera_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Camera Name
+        camera_department:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Camera Department
+        camera_lat:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Camera Lat
+        camera_lon:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Camera Lon
+        camera_address:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Camera Address
+      type: object
+      required:
+      - id
+      - camera_id
+      - plate_text
+      - confidence
+      - pts_ms
+      - detected_at
+      - track_id
+      - crop_uri
+      - vehicle_type
+      title: DetectionOut
+    HTTPValidationError:
+      properties:
+        detail:
+          items:
+            $ref: '#/components/schemas/ValidationError'
+          type: array
+          title: Detail
+      type: object
+      title: HTTPValidationError
+    LoginRequest:
+      properties:
+        email:
+          type: string
+          title: Email
+        password:
+          type: string
+          title: Password
+      type: object
+      required:
+      - email
+      - password
+      title: LoginRequest
+    TagRequest:
+      properties:
+        tags:
+          items:
+            type: string
+          type: array
+          title: Tags
+        note:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Note
+      type: object
+      required:
+      - tags
+      title: TagRequest
+    Token:
+      properties:
+        access_token:
+          type: string
+          title: Access Token
+        token_type:
+          type: string
+          title: Token Type
+        expires_in_minutes:
+          type: integer
+          title: Expires In Minutes
+        user:
+          $ref: '#/components/schemas/UserOut'
+      type: object
+      required:
+      - access_token
+      - token_type
+      - expires_in_minutes
+      - user
+      title: Token
+    UserCreate:
+      properties:
+        email:
+          type: string
+          format: email
+          title: Email
+        username:
+          type: string
+          title: Username
+        password:
+          type: string
+          title: Password
+        role:
+          type: string
+          title: Role
+          default: viewer
+        department:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Department
+      type: object
+      required:
+      - email
+      - username
+      - password
+      title: UserCreate
+    UserOut:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        email:
+          type: string
+          title: Email
+        username:
+          type: string
+          title: Username
+        role:
+          type: string
+          title: Role
+        department:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Department
+        is_active:
+          type: boolean
+          title: Is Active
+      type: object
+      required:
+      - id
+      - email
+      - username
+      - role
+      - department
+      - is_active
+      title: UserOut
+    ValidationError:
+      properties:
+        loc:
+          items:
+            anyOf:
+            - type: string
+            - type: integer
+          type: array
+          title: Location
+        msg:
+          type: string
+          title: Message
+        type:
+          type: string
+          title: Error Type
+      type: object
+      required:
+      - loc
+      - msg
+      - type
+      title: ValidationError
+    WatchlistCreate:
+      properties:
+        entity_type:
+          type: string
+          title: Entity Type
+          default: vehicle
+        plate_text:
+          type: string
+          title: Plate Text
+        reason:
+          type: string
+          title: Reason
+          default: wanted
+        severity:
+          type: string
+          title: Severity
+          default: high
+        case_ref:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Case Ref
+        description:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Description
+        added_by:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Added By
+          default: operator
+      type: object
+      required:
+      - plate_text
+      title: WatchlistCreate
+    WatchlistOut:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        entity_type:
+          type: string
+          title: Entity Type
+        plate_text:
+          type: string
+          title: Plate Text
+        reason:
+          type: string
+          title: Reason
+        severity:
+          type: string
+          title: Severity
+        case_ref:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Case Ref
+        description:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Description
+        added_by:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Added By
+        active:
+          type: boolean
+          title: Active
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+      type: object
+      required:
+      - id
+      - entity_type
+      - plate_text
+      - reason
+      - severity
+      - case_ref
+      - description
+      - added_by
+      - active
+      - created_at
+      title: WatchlistOut
+  securitySchemes:
+    HTTPBearer:
+      type: http
+      scheme: bearer
