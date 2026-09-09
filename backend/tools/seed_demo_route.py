@@ -64,14 +64,18 @@ EVIDENCE_DIR = Path(settings.evidence_crop_dir)
 WATCHLIST = [
     {"plate_text": "GJ01KA7392", "reason": "stolen", "severity": "critical",
      "case_ref": "FIR/2026/0912", "entity_type": "vehicle",
-     "description": "Reported stolen from Navrangpura. Cloned plate suspected — "
-                    "sighted in two districts within the hour."},
+     "description": "Reported stolen from Navrangpura on 6 September. "
+                    "Tracked across the city centre."},
     {"plate_text": "GJ18DH2745", "reason": "wanted", "severity": "high",
      "case_ref": "FIR/2026/0884", "entity_type": "vehicle",
      "description": "Vehicle sought in connection with an ongoing enquiry."},
     {"plate_text": "MH12QP5837", "reason": "suspicious", "severity": "medium",
      "case_ref": "INT/2026/0271", "entity_type": "vehicle",
      "description": "Out-of-state vehicle flagged for repeated night transits."},
+    {"plate_text": "GJ03CJ6081", "reason": "suspicious", "severity": "high",
+     "case_ref": "INT/2026/0318", "entity_type": "vehicle",
+     "description": "Cloned registration suspected — the same plate was recorded "
+                    "in Rajkot and Ahmedabad within the hour."},
     {"plate_text": "RJ14SL3926", "reason": "blacklisted", "severity": "low",
      "case_ref": "TRF/2026/1190", "entity_type": "vehicle",
      "description": "Commercial permit lapsed; stop and verify documentation."},
@@ -79,39 +83,53 @@ WATCHLIST = [
 
 
 JOURNEYS = [
-    # Timings are set against the real distances between these cameras, so the
-    # speed the route view computes for each leg is one a vehicle could actually
-    # have driven. The first version moved a car 263 km in 4 minutes — 3,900
-    # km/h — which flagged as impossible for the right reason but read as broken
-    # data rather than a detected clone.
+    # Timings are set against the real distances between these cameras, so every
+    # speed the route view computes is one a vehicle could actually have driven.
+    # Ahmedabad city legs sit at 24-32 km/h, ordinary for that traffic.
     #
-    # Ahmedabad city legs sit at 24-32 km/h, which is ordinary for that traffic.
+    # Only ONE journey contains an impossible transition, and it is not the
+    # headline vehicle. Two earlier versions got this wrong in the same way:
+    # they gave the stolen car a route ending in a flagged 153 km/h, then 404
+    # km/h, on the theory that a bigger number demonstrates the check better.
+    #
+    # It demonstrates the opposite. Route reconstruction is the feature being
+    # shown, and its demonstration should be a journey that makes sense — a
+    # stolen car moving through the city, which is what an operator sees on
+    # almost every real query. Ending the flagship route in an absurd number
+    # makes the whole panel read as broken data, and it wastes the one route a
+    # reviewer is most likely to open.
+    #
+    # The impossible-transition check gets its own vehicle, below, where the
+    # story is legible: a plate seen twice in Rajkot and then in Ahmedabad
+    # inside the hour is not a fast car, it is two cars wearing one plate.
     {
         "plate": "GJ01KA7392",
-        "note": "City centre, then the same plate 263 km away — a cloned registration",
+        "note": "Stolen vehicle tracked across the city — a clean, plausible route",
         "legs": [
             ("cam01", 0),    # Chimanbhai Bridge
             ("cam14", 5),    # Delight RLVD        2.0 km road   23 km/h
             ("cam04", 17),   # Paldi Circle        6.3 km        32 km/h
             ("cam13", 26),   # C N Vidyalaya       4.0 km        27 km/h
-            # Rajkot, 263 km away by road, 30 minutes after the Ahmedabad
-            # sighting. That implies roughly 400 km/h, which nothing on an
-            # Indian highway can do.
-            #
-            # An earlier version used a 79-minute gap for about 200 km/h, on the
-            # theory that a near-miss reads as more realistic than an absurdity.
-            # That was wrong twice over. The vehicle behind this plate is a
-            # light goods vehicle, which cannot sustain 150 km/h let alone 200,
-            # so the figure invited the reader to doubt the data rather than the
-            # plate. And the real drive is 3.3 to 4.4 hours at legal speeds, so
-            # a 79-minute gap sat in the band where a reader has to do
-            # arithmetic to decide whether the flag is right.
-            #
-            # A cloned registration should be obvious on sight. Half an hour
-            # between Ahmedabad and Rajkot is not a fast car; it is two vehicles
-            # wearing the same plate, and that is the conclusion the operator
-            # should reach without checking anything.
-            ("cam17", 56),
+            ("cam02", 34),   # Janpath, Ashram Road 3.6 km       27 km/h
+        ],
+    },
+    {
+        # The cloned-plate case, kept separate so it is read as a finding rather
+        # than as a fault in the data.
+        #
+        # Two sightings in Rajkot eighteen minutes apart — an ordinary local
+        # trip. Then the same registration in Ahmedabad, 197 km away, 77
+        # minutes later. That leg implies about 150 km/h sustained on the
+        # NH-47, which the drive does not permit: it is 3.3 to 4.4 hours at
+        # legal speeds. The Rajkot pair is what makes it unambiguous — a single
+        # distant sighting could be a misread, but a vehicle demonstrably
+        # working in Rajkot cannot also be in Ahmedabad.
+        "plate": "GJ03CJ6081",
+        "note": "Same plate in two districts within the hour — cloned registration",
+        "legs": [
+            ("cam17", 0),    # Rajkot Bus Port
+            ("cam18", 18),   # Rajkot CCTV          9.7 km       32 km/h
+            ("cam13", 95),   # C N Vidyalaya, Ahmedabad — 197 km in 77 min
         ],
     },
     {
@@ -149,13 +167,6 @@ JOURNEYS = [
             ("cam12", 5),    # Adalaj Toll Naka
             ("cam05", 24),   # Visat Teen Rasta    9.3 km   29 km/h
             ("cam01", 36),   # Chimanbhai Bridge   6.0 km   30 km/h
-        ],
-    },
-    {
-        "plate": "GJ03CJ6081",
-        "note": "Single sighting — a vehicle seen once and not again",
-        "legs": [
-            ("cam13", 30),
         ],
     },
 ]
@@ -366,7 +377,8 @@ def main() -> int:
     if missing:
         print(f"Not found in the clip: {', '.join(missing)}")
     print("\nSearch any plate and choose 'Show Route on Map' — each returns its own")
-    print("route. GJ99AB1234 ends with a flagged impossible transition to Rajkot.")
+    print("route. GJ01KA7392 is a clean city route; GJ03CJ6081 is the cloned")
+    print("plate — Rajkot twice, then Ahmedabad 197 km away 77 minutes later.")
     return 0
 
 

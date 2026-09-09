@@ -69,6 +69,19 @@ function RoutePanel({ route, onClose }: { route: RouteData; onClose: () => void 
 
     const center: [number, number] = coords.length > 0 ? coords[Math.floor(coords.length / 2)] : [23.0225, 72.5714]
 
+    // Fit the map to the sightings rather than guessing a zoom.
+    //
+    // A fixed zoom of 12 works for a route inside one city and fails completely
+    // for the case this view exists to show: a cloned plate recorded in two
+    // districts leaves most of its own route off-screen, so the panel that is
+    // meant to make the anomaly obvious hides half of it.
+    const bounds: [[number, number], [number, number]] | null = coords.length > 1
+        ? [
+            [Math.min(...coords.map(c => c[0])), Math.min(...coords.map(c => c[1]))],
+            [Math.max(...coords.map(c => c[0])), Math.max(...coords.map(c => c[1]))],
+        ]
+        : null
+
     return (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
             <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 16, width: '90%', maxWidth: 1000, height: '80vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
@@ -110,7 +123,12 @@ function RoutePanel({ route, onClose }: { route: RouteData; onClose: () => void 
                             )}
                             <div><span style={{ color: 'var(--red)' }}>●</span> implausible transition</div>
                         </div>
-                        <MapContainer center={center} zoom={12} style={{ height: '100%' }}>
+                        <MapContainer
+                            {...(bounds
+                                ? { bounds, boundsOptions: { padding: [42, 42] as [number, number], maxZoom: 14 } }
+                                : { center, zoom: 12 })}
+                            style={{ height: '100%' }}
+                        >
                             <TileLayer
                                 url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                                 attribution='&copy; OpenStreetMap contributors'
@@ -120,8 +138,19 @@ function RoutePanel({ route, onClose }: { route: RouteData; onClose: () => void 
                             )}
                             {coords.length > 1 && <Polyline positions={coords} pathOptions={{ color: '#3b82f6', weight: 3, dashArray: '8 4' }} />}
                             {route.sightings.filter(s => s.lat && s.lon).map(s => (
-                                <CircleMarker key={s.index} center={[s.lat!, s.lon!]} radius={8}
-                                    pathOptions={{ color: s.impossible ? '#ef4444' : '#3b82f6', fillColor: s.impossible ? '#ef4444' : '#1d4ed8', fillOpacity: 0.9, weight: 2 }}>
+                                <CircleMarker
+                                    key={s.index}
+                                    center={[s.lat!, s.lon!]}
+                                    radius={s.impossible ? 10 : 7}
+                                    pathOptions={{
+                                        // Dark ring for the same reason as the
+                                        // camera map: a coloured dot on a dark
+                                        // basemap needs an outline to be seen.
+                                        color: s.impossible ? '#ffffff' : 'rgba(3, 7, 18, 0.92)',
+                                        fillColor: s.impossible ? '#ef4444' : '#3987e5',
+                                        fillOpacity: 1,
+                                        weight: s.impossible ? 2.5 : 2,
+                                    }}>
                                     <Popup>
                                         <div style={{ fontFamily: 'var(--font-mono)', fontWeight: 700 }}>#{s.index + 1} — {s.camera_name}</div>
                                         <div style={{ fontSize: 12, color: 'gray' }}>{new Date(s.detected_at).toLocaleString()}</div>
