@@ -33,10 +33,11 @@ export default function WatchlistPage() {
         if (!form.plate_text.trim()) return
         setAdding(true)
         try {
+            // added_by is set by the API from the authenticated principal;
+            // sending it from here would be a claim, not a record.
             await addToWatchlist({
                 ...form,
                 plate_text: form.plate_text.toUpperCase().trim(),
-                added_by: 'operator',
             })
             setForm({ plate_text: '', reason: 'wanted', severity: 'high', case_ref: '', description: '' })
             setShowForm(false)
@@ -70,7 +71,7 @@ export default function WatchlistPage() {
                 <div>
                     <h1 style={{ fontSize: 20, fontWeight: 700 }}>Watchlist</h1>
                     <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>
-                        {activeEntries.length} active entries · {critical} critical · {high} high
+                        {activeEntries.length} active {activeEntries.length === 1 ? 'entry' : 'entries'} · {critical} critical · {high} high
                     </div>
                 </div>
                 <div style={{ display: 'flex', gap: 8 }}>

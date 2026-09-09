@@ -213,9 +213,30 @@ export default function MapPage() {
                     style={{ height: '100%', width: '100%' }}
                     zoomControl={true}
                 >
+                    {/*
+                      * OpenStreetMap's public tile service rate-limits bursts,
+                      * and a map that renders blank in front of a jury is a
+                      * visible failure of the Model 1 deliverable. Three
+                      * settings make that far less likely:
+                      *
+                      *   keepBuffer   holds tiles just outside the viewport, so
+                      *                panning reuses them instead of refetching
+                      *   updateWhenIdle  defers loading until the pan settles,
+                      *                turning a drag across the state from
+                      *                hundreds of requests into one batch
+                      *   crossOrigin  lets the browser cache them properly
+                      *
+                      * A commercial key would remove the limit entirely, but
+                      * that means an account and an outbound dependency we have
+                      * declined elsewhere in this project for the same reason.
+                      */}
                     <TileLayer
                         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
                         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                        keepBuffer={4}
+                        updateWhenIdle
+                        crossOrigin="anonymous"
+                        maxZoom={19}
                     />
                     <FitToCameras points={cameraPoints} />
                     {flyTo && <MapFlyTo lat={flyTo.lat} lon={flyTo.lon} />}
@@ -227,14 +248,33 @@ export default function MapPage() {
                             <CircleMarker
                                 key={p.id}
                                 center={[lat, lon]}
-                                radius={p.is_live ? 8 : 5}
+                                radius={p.is_live ? 7 : 5}
                                 pathOptions={{
                                     color: p.is_live ? col : '#6b7280',
                                     fillColor: p.is_live ? col : '#374151',
-                                    fillOpacity: 0.85,
-                                    weight: p.is_live ? 2 : 1,
+                                    // Slightly translucent so a camera hidden
+                                    // beneath another is still visible as a
+                                    // darker patch. Most of the grid sits in
+                                    // Ahmedabad, where markers overlap heavily
+                                    // and an opaque fill hides its neighbours
+                                    // entirely.
+                                    fillOpacity: 0.72,
+                                    // A dark ring separates adjacent markers of
+                                    // the same department, which otherwise merge
+                                    // into one blob of colour.
+                                    weight: 1.5,
                                 }}
-                                eventHandlers={{ click: () => setFlyTo({ lat, lon }) }}
+                                eventHandlers={{
+                                    click: () => setFlyTo({ lat, lon }),
+                                    // Bring the marker under the cursor to the
+                                    // front, so an overlapped camera can be read
+                                    // and clicked without zooming in first.
+                                    mouseover: e => {
+                                        e.target.bringToFront()
+                                        e.target.setStyle({ weight: 3, fillOpacity: 1 })
+                                    },
+                                    mouseout: e => e.target.setStyle({ weight: 1.5, fillOpacity: 0.72 }),
+                                }}
                             >
                                 <Popup>
                                     <div>

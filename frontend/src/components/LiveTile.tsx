@@ -1,4 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+
+// How long a tile may sit on "Connecting…" before it admits nothing is coming.
+// Long enough that a slow but working camera is not maligned; short enough that
+// an operator is not left watching a spinner during a demonstration.
+const SLOW_AFTER_MS = 12_000
 import { RotateCw, VideoOff } from 'lucide-react'
 
 export type TileState = 'connecting' | 'playing' | 'error'
@@ -34,6 +39,7 @@ export default function LiveTile({
 }) {
     const imgRef = useRef<HTMLImageElement | null>(null)
     const [state, setState] = useState<TileState>('connecting')
+    const [slow, setSlow] = useState(false)
     const [attempt, setAttempt] = useState(0)
 
     const update = useCallback((s: TileState) => {
@@ -51,8 +57,15 @@ export default function LiveTile({
         const src = `/api/v1/cameras/live/${encodeURIComponent(cameraId)}`
             + `?profile=${profile}&t=${Date.now()}`
 
+        setSlow(false)
         const onLoad = () => update('playing')
         const onError = () => update('error')
+
+        // A tile that spins forever is worse than one that says it failed: the
+        // operator cannot tell a slow camera from a dead gateway. After this it
+        // says so, and offers the retry, while leaving the connection open in
+        // case it is merely slow.
+        const slowTimer = setTimeout(() => setSlow(true), SLOW_AFTER_MS)
         img.addEventListener('load', onLoad)
         img.addEventListener('error', onError)
         img.src = src
@@ -68,6 +81,7 @@ export default function LiveTile({
         document.addEventListener('visibilitychange', onVisibility)
 
         return () => {
+            clearTimeout(slowTimer)
             document.removeEventListener('visibilitychange', onVisibility)
             img.removeEventListener('load', onLoad)
             img.removeEventListener('error', onError)
@@ -117,11 +131,21 @@ export default function LiveTile({
                     ) : (
                         <>
                             <div className="spinner" aria-hidden="true" />
-                            <span>Connecting…</span>
-                            <span style={{ fontSize: 10.5, color: 'var(--text-muted)', maxWidth: 220 }}>
-                                The gateway accepts one connection at a time, so
-                                tiles come up in sequence.
+                            <span>{slow ? 'Still connecting…' : 'Connecting…'}</span>
+                            <span style={{ fontSize: 10.5, color: 'var(--text-muted)', maxWidth: 230 }}>
+                                {slow
+                                    ? 'The camera gateway is not responding. The feed will appear if it recovers.'
+                                    : 'The gateway serves one connection at a time, so tiles come up in sequence.'}
                             </span>
+                            {slow && (
+                                <button
+                                    className="btn btn-ghost btn-sm"
+                                    style={{ marginTop: 2 }}
+                                    onClick={() => setAttempt(a => a + 1)}
+                                >
+                                    <RotateCw size={11} aria-hidden="true" /> Retry
+                                </button>
+                            )}
                         </>
                     )}
                 </div>

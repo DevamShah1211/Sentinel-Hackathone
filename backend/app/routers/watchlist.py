@@ -152,6 +152,10 @@ async def add_to_watchlist(body: WatchlistCreate, db: AsyncSession = Depends(get
                            principal: Principal = RequireOperator):
     entry = WatchlistEntry(**body.model_dump())
     entry.plate_text = entry.plate_text.upper().strip()
+    # Who added a plate to a police watchlist is an accountability record, so it
+    # comes from the authenticated caller and not from the request body. The
+    # frontend was sending the literal string "operator", which told us nothing.
+    entry.added_by = principal.email
     db.add(entry)
     await db.commit()
     await db.refresh(entry)

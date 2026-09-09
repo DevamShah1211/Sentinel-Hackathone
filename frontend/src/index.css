@@ -988,8 +988,28 @@ tr:last-child td { border-bottom: none; }
   gap: 16px;
   margin-bottom: 20px;
 }
-.page-head h1 { font-size: 21px; font-weight: 700; letter-spacing: -0.02em; }
-.page-head .page-sub { font-size: 12.5px; color: var(--text-secondary); margin-top: 3px; }
+/* The topbar already names the page, so rendering the same words again 60px
+   below cost a line of vertical space on every screen and gave the document two
+   competing level-one headings. The heading stays in the markup — a page needs
+   one, and a screen reader announces it — but it is no longer painted twice.
+   The subtitle is kept: it says what the page does, which the title does not. */
+.page-head h1 {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+.page-head .page-sub {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  max-width: 78ch;
+}
 .page-head-actions { display: flex; gap: 8px; flex-shrink: 0; }
 
 /* Respect a reader who has asked the system to stop moving things. */
