@@ -1,6 +1,6 @@
 import { Suspense, lazy, useCallback, useEffect, useState } from 'react'
 import { BrowserRouter, NavLink, Route, Routes, useLocation } from 'react-router-dom'
-import { BarChart2, Bell, LogOut, Map, Monitor, Search, Shield } from 'lucide-react'
+import { Activity, BarChart2, Bell, LogOut, Map, Monitor, Search, Shield } from 'lucide-react'
 import LoginPage from './pages/LoginPage'
 
 // Routes are split so the first paint does not wait on every page's
@@ -18,6 +18,7 @@ const VideoWallPage = lazy(() => import('./pages/VideoWallPage'))
 const SearchPage = lazy(() => import('./pages/SearchPage'))
 const AlertsPage = lazy(() => import('./pages/AlertsPage'))
 const WatchlistPage = lazy(() => import('./pages/WatchlistPage'))
+const HealthPage = lazy(() => import('./pages/HealthPage'))
 
 // Prefetch the rest once the first page is interactive. The operator pays no
 // wait when they navigate, but the initial render was never blocked on it.
@@ -27,6 +28,7 @@ function prefetchRoutes() {
     void import('./pages/SearchPage')
     void import('./pages/AlertsPage')
     void import('./pages/WatchlistPage')
+    void import('./pages/HealthPage')
 }
 import { useAlertWebSocket, type WsStatus } from './hooks/useAlertWebSocket'
 import Toast from './components/Toast'
@@ -39,6 +41,7 @@ const NAV = [
     { to: '/search', label: 'Plate Search', Icon: Search },
     { to: '/alerts', label: 'Alerts', Icon: Bell },
     { to: '/watchlist', label: 'Watchlist', Icon: Shield },
+    { to: '/health', label: 'Grid Health', Icon: Activity },
 ] as const
 
 const PAGE_TITLES: Record<string, string> = {
@@ -48,6 +51,7 @@ const PAGE_TITLES: Record<string, string> = {
     '/search': 'Plate Search & Route Reconstruction',
     '/alerts': 'Live Alerts',
     '/watchlist': 'Watchlist Management',
+    '/health': 'Grid Health & Scene Analytics',
 }
 
 function Sidebar({ newAlertCount }: { newAlertCount: number }) {
@@ -178,6 +182,7 @@ function Shell({ user, onSignOut }: { user: AuthUser | null; onSignOut: () => vo
                         <Route path="/search" element={<SearchPage />} />
                         <Route path="/alerts" element={<AlertsPage wsAlerts={alerts} />} />
                         <Route path="/watchlist" element={<WatchlistPage />} />
+                        <Route path="/health" element={<HealthPage />} />
                     </Routes>
                 </Suspense>
             </div>

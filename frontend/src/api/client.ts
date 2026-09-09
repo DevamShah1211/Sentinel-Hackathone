@@ -58,6 +58,13 @@ export const getRoleModel = () => api.get('/auth/roles').then(r => r.data)
 // ─── Cameras ────────────────────────────────────────────────────
 export const getCamerasGeoJSON = () => api.get('/cameras/geojson').then(r => r.data)
 export const getCameras = (params?: Record<string, unknown>) => api.get('/cameras', { params }).then(r => r.data)
+export const getCameraHealth = () => api.get('/cameras/health-status').then(r => r.data)
+
+// ─── Scene analytics: vehicle / person / object detection ────────
+export const getSceneSummary = (hours = 24) =>
+    api.get('/analytics/scene/summary', { params: { hours } }).then(r => r.data)
+export const getSceneByCamera = (hours = 24, limit = 30) =>
+    api.get('/analytics/scene/by-camera', { params: { hours, limit } }).then(r => r.data)
 export const getCameraStats = () => api.get('/cameras/stats').then(r => r.data)
 export const syncCatalogue = () => api.post('/ingest/sync').then(r => r.data)
 export const getIngestStatus = () => api.get('/ingest/status').then(r => r.data)
