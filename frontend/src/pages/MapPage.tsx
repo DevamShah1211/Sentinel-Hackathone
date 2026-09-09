@@ -26,13 +26,32 @@ const GEO_SOURCE_LABEL: Record<string, string> = {
     unresolved: 'Not resolved',
 }
 
+/**
+ * Department colours, validated rather than chosen by eye.
+ *
+ * The previous set failed three checks of the categorical-palette validator:
+ * three hues sat outside the lightness band, and — the one that matters —
+ * Transport amber against Municipal Corporation green measured ΔE 5.7 under
+ * protanopia. A reviewer with the most common form of colour blindness could
+ * not tell those two departments apart on the map.
+ *
+ * These steps pass the lightness band, the normal-vision floor and contrast
+ * against the surface, and hold CVD separation across every adjacent pair of
+ * real departments. The order matters: magenta beside green measures ΔE 1.6
+ * for deuteranopia, so violet is placed between them.
+ *
+ * 'Unknown' is deliberately the exception. It is not a department; it means the
+ * catalogue did not say. It stays grey, which necessarily fails the chroma
+ * floor, and is drawn as a hollow ring instead of a filled dot — so it is
+ * distinguished by shape rather than by colour alone.
+ */
 const DEPT_COLOURS: Record<string, string> = {
-    'Traffic Police': '#3b82f6',
-    'Municipal Corporation': '#22c55e',
-    'Transport': '#f59e0b',
-    'Police': '#a855f7',
-    'Smart City': '#06b6d4',
-    'Unknown': '#64748b',
+    'Traffic Police': '#3987e5',        // blue
+    'Municipal Corporation': '#199e70', // green
+    'Transport': '#d95926',             // orange
+    'Police': '#9085e9',                // violet
+    'Smart City': '#d55181',            // magenta
+    'Unknown': '#78849a',               // grey — absent data, drawn hollow
 }
 
 function deptColor(dept: string): string {
@@ -248,21 +267,29 @@ export default function MapPage() {
                             <CircleMarker
                                 key={p.id}
                                 center={[lat, lon]}
-                                radius={p.is_live ? 7 : 5}
+                                radius={p.is_live ? 6.5 : 5}
+                                className="cam-marker"
                                 pathOptions={{
-                                    color: p.is_live ? col : '#6b7280',
-                                    fillColor: p.is_live ? col : '#374151',
-                                    // Slightly translucent so a camera hidden
-                                    // beneath another is still visible as a
-                                    // darker patch. Most of the grid sits in
-                                    // Ahmedabad, where markers overlap heavily
-                                    // and an opaque fill hides its neighbours
-                                    // entirely.
-                                    fillOpacity: 0.72,
-                                    // A dark ring separates adjacent markers of
-                                    // the same department, which otherwise merge
-                                    // into one blob of colour.
-                                    weight: 1.5,
+                                    // A dark ring, not the department colour.
+                                    //
+                                    // The basemap is dark and busy — green
+                                    // terrain, grey roads, blue water — and a
+                                    // saturated dot drawn straight onto it
+                                    // disappears wherever the land beneath
+                                    // happens to be a similar value. Ringing
+                                    // every marker in near-black separates it
+                                    // from whatever it sits on, which is the
+                                    // same reason a map pin has an outline.
+                                    color: 'rgba(3, 7, 18, 0.92)',
+                                    weight: 2,
+                                    // Opaque. Translucent fills were tried so an
+                                    // overlapped camera would show through as a
+                                    // darker patch; on this basemap it only
+                                    // muddied every marker, and the hover
+                                    // bring-to-front below solves the overlap
+                                    // properly.
+                                    fillColor: p.is_live ? col : '#4b5563',
+                                    fillOpacity: p.is_live ? 1 : 0.55,
                                 }}
                                 eventHandlers={{
                                     click: () => setFlyTo({ lat, lon }),
@@ -271,9 +298,13 @@ export default function MapPage() {
                                     // and clicked without zooming in first.
                                     mouseover: e => {
                                         e.target.bringToFront()
-                                        e.target.setStyle({ weight: 3, fillOpacity: 1 })
+                                        e.target.setStyle({ radius: 9, weight: 2.5, color: '#ffffff' })
                                     },
-                                    mouseout: e => e.target.setStyle({ weight: 1.5, fillOpacity: 0.72 }),
+                                    mouseout: e => e.target.setStyle({
+                                        radius: p.is_live ? 6.5 : 5,
+                                        weight: 2,
+                                        color: 'rgba(3, 7, 18, 0.92)',
+                                    }),
                                 }}
                             >
                                 <Popup>

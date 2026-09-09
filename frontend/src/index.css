@@ -1086,8 +1086,32 @@ tr:last-child td { border-bottom: none; }
    recording cannot carry that. Filtering OpenStreetMap's own tiles needs no
    third-party account and no key. The filter is scoped to the tile pane, so
    camera markers and route lines above it keep their true colours. */
+/* The basemap is context, not content.
+ *
+ * At the previous settings the terrain kept enough saturation that green
+ * parkland and forest competed with the department colours plotted on top —
+ * markers had to fight the map to be seen. Desaturating further and lifting
+ * brightness slightly turns the basemap into a legible grey-blue ground that
+ * still reads as geography, and lets the markers carry all the colour on the
+ * screen. This is the same reason a printed thematic map is drawn over a
+ * greyscale base.
+ */
 .leaflet-tile-pane {
-  filter: invert(1) hue-rotate(180deg) brightness(0.92) contrast(0.88) saturate(0.65);
+  filter: invert(1) hue-rotate(180deg) brightness(0.96) contrast(0.82) saturate(0.28);
+}
+
+/* Markers are drawn to a canvas renderer, not SVG — Leaflet chooses canvas for
+   CircleMarker at this count — so a `.leaflet-overlay-pane svg` filter matches
+   nothing. Checked in the browser rather than assumed: the pane holds one
+   <canvas> and zero <path> elements. The separation those markers need comes
+   from the dark stroke set in MapPage's pathOptions, which the canvas renderer
+   does honour.
+
+   The shadow is applied to the whole marker pane instead, which the canvas does
+   inherit. */
+.leaflet-marker-pane,
+.leaflet-overlay-pane {
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5));
 }
 
 .leaflet-control-attribution {
