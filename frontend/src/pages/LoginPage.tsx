@@ -1,27 +1,48 @@
 import { useEffect, useState } from 'react'
-import { AlertCircle, LogIn, ShieldCheck } from 'lucide-react'
+import { AlertCircle, Camera, LogIn, MapPin, ScanLine, ShieldCheck } from 'lucide-react'
 import { getRoleModel, login, setSession, type AuthUser } from '../api/client'
 
 /**
  * Sign-in screen.
  *
- * Demonstration credentials are listed on the page deliberately: this instance is
- * shared with evaluators who need a way in, and the accounts are seeded, clearly
- * labelled, and hold no real data. A production deployment sets AUTH_ENABLED=true
- * with real accounts and removes this panel.
+ * Demonstration *emails* are listed so an evaluator can see the role model and
+ * fill the form in one click. Their passwords are deliberately NOT here.
+ *
+ * They used to be. Three credentials were embedded in this file, which meant
+ * they were also in the compiled bundle served to every visitor — so enabling
+ * authentication, the step meant to secure the platform, would have shipped
+ * three working accounts to anyone who opened the page, one of them state
+ * admin. Passwords are generated at seeding time and printed once to the server
+ * log; whoever runs the instance passes them to whoever needs them.
  */
-const DEMO_ACCOUNTS = [
-    { role: 'State Admin', email: 'admin@sentinel.gujarat.gov.in', password: 'sentinel-demo-2026',
-      grants: 'Everything, including the audit trail' },
-    { role: 'Dept Operator', email: 'operator@sentinel.gujarat.gov.in', password: 'operator-demo-2026',
-      grants: 'Search, watchlist, alerts, reports' },
-    { role: 'Viewer', email: 'viewer@sentinel.gujarat.gov.in', password: 'viewer-demo-2026',
-      grants: 'Map and live viewing only' },
+const DEMO_ROLES = [
+    {
+        role: 'State Admin',
+        email: 'admin@sentinel.gujarat.gov.in',
+        grants: 'Full access, including the audit trail and camera registry',
+    },
+    {
+        role: 'Dept Operator',
+        email: 'operator@sentinel.gujarat.gov.in',
+        grants: 'Plate search, watchlist, alerts and report export',
+    },
+    {
+        role: 'Viewer',
+        email: 'viewer@sentinel.gujarat.gov.in',
+        grants: 'Map and live camera viewing only',
+    },
+]
+
+/** What the platform does, shown beside the form so the panel is not dead space. */
+const CAPABILITIES = [
+    { icon: MapPin, title: 'Central registry & GIS', body: 'Every camera onboarded, located and searchable on one map.' },
+    { icon: Camera, title: 'Unified viewing', body: 'Thirty feeds from one operator console, whatever the vendor.' },
+    { icon: ScanLine, title: 'ANPR & watchlist', body: 'Continuous plate reading, matched against wanted vehicles.' },
 ]
 
 export default function LoginPage({ onSignedIn }: { onSignedIn: (u: AuthUser) => void }) {
-    const [email, setEmail] = useState(DEMO_ACCOUNTS[0].email)
-    const [password, setPassword] = useState(DEMO_ACCOUNTS[0].password)
+    const [email, setEmail] = useState(DEMO_ROLES[0].email)
+    const [password, setPassword] = useState('')
     const [busy, setBusy] = useState(false)
     const [error, setError] = useState<string | null>(null)
     const [authRequired, setAuthRequired] = useState<boolean | null>(null)
@@ -42,25 +63,22 @@ export default function LoginPage({ onSignedIn }: { onSignedIn: (u: AuthUser) =>
             onSignedIn(data.user)
         } catch (err: unknown) {
             const status = (err as { response?: { status?: number } })?.response?.status
-            setError(status === 401
-                ? 'Incorrect email or password.'
+            setError(
+                status === 401 ? 'Incorrect email or password.'
+                : status === 429 ? 'Too many attempts. Wait a minute and try again.'
                 : 'Could not reach the platform. Is the backend running?')
         } finally {
             setBusy(false)
         }
     }
 
-    const useAccount = (account: typeof DEMO_ACCOUNTS[number]) => {
-        setEmail(account.email)
-        setPassword(account.password)
-        setError(null)
-    }
-
     return (
         <div className="login-shell">
-            <div className="login-card">
+            {/* Left: what this is. Fills what was empty space, and tells an
+                evaluator what they are looking at before they are inside. */}
+            <aside className="login-aside">
                 <div className="login-brand">
-                    <svg width="30" height="30" viewBox="0 0 24 24" fill="none"
+                    <svg width="34" height="34" viewBox="0 0 24 24" fill="none"
                          stroke="currentColor" strokeWidth="2" aria-hidden="true">
                         <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
                     </svg>
@@ -70,73 +88,103 @@ export default function LoginPage({ onSignedIn }: { onSignedIn: (u: AuthUser) =>
                     </div>
                 </div>
 
-                <form onSubmit={submit} className="login-form">
-                    <label className="field">
-                        <span>Email</span>
-                        <input
-                            className="input"
-                            type="email"
-                            autoComplete="username"
-                            required
-                            value={email}
-                            onChange={e => setEmail(e.target.value)}
-                        />
-                    </label>
+                <p className="login-lede">
+                    One registry, one viewer and one plate index across every
+                    department&rsquo;s cameras — without replacing the systems they
+                    already run.
+                </p>
 
-                    <label className="field">
-                        <span>Password</span>
-                        <input
-                            className="input"
-                            type="password"
-                            autoComplete="current-password"
-                            required
-                            value={password}
-                            onChange={e => setPassword(e.target.value)}
-                        />
-                    </label>
-
-                    {error && (
-                        <div className="login-error" role="alert">
-                            <AlertCircle size={15} aria-hidden="true" />
-                            <span>{error}</span>
-                        </div>
-                    )}
-
-                    <button className="btn btn-primary login-submit" type="submit" disabled={busy}>
-                        {busy ? <div className="spinner" aria-hidden="true" /> : <LogIn size={15} aria-hidden="true" />}
-                        {busy ? 'Signing in…' : 'Sign in'}
-                    </button>
-                </form>
-
-                <div className="login-demo">
-                    <div className="login-demo-head">
-                        <ShieldCheck size={13} aria-hidden="true" />
-                        Demonstration accounts — click to sign in
-                    </div>
-                    {DEMO_ACCOUNTS.map(account => (
-                        <button
-                            key={account.email}
-                            type="button"
-                            className="login-demo-row"
-                            onClick={() => useAccount(account)}
-                        >
-                            <span className="login-demo-role">{account.role}</span>
-                            <span className="login-demo-grants">{account.grants}</span>
-                        </button>
+                <ul className="login-capabilities">
+                    {CAPABILITIES.map(({ icon: Icon, title, body }) => (
+                        <li key={title}>
+                            <Icon size={17} aria-hidden="true" />
+                            <div>
+                                <strong>{title}</strong>
+                                <span>{body}</span>
+                            </div>
+                        </li>
                     ))}
-                    {authRequired === false && (
-                        <p className="login-note">
-                            Role enforcement is currently disabled on this instance
-                            (<code>AUTH_ENABLED=false</code>), so the API is open. Signing in
-                            still sets your identity for the audit trail.
-                        </p>
-                    )}
-                </div>
+                </ul>
 
-                <div className="login-footer">
-                    Gujarat CCTV Integration Hackathon 2026 · Model 1 + Model 2
+                <div className="login-aside-foot">
+                    Gujarat CCTV Integration Hackathon 2026 · Category 1 · Model 1 + Model 2
                 </div>
-            </div>
+            </aside>
+
+            {/* Right: the form itself. */}
+            <main className="login-main">
+                <div className="login-card">
+                    <h1 className="login-heading">Sign in</h1>
+                    <p className="login-sub">Use the account issued for this instance.</p>
+
+                    <form onSubmit={submit} className="login-form">
+                        <label className="field">
+                            <span>Email</span>
+                            <input
+                                className="input"
+                                type="email"
+                                autoComplete="username"
+                                required
+                                autoFocus
+                                value={email}
+                                onChange={e => setEmail(e.target.value)}
+                            />
+                        </label>
+
+                        <label className="field">
+                            <span>Password</span>
+                            <input
+                                className="input"
+                                type="password"
+                                autoComplete="current-password"
+                                required
+                                value={password}
+                                onChange={e => setPassword(e.target.value)}
+                                placeholder="Issued at deployment"
+                            />
+                        </label>
+
+                        {error && (
+                            <div className="login-error" role="alert">
+                                <AlertCircle size={15} aria-hidden="true" />
+                                <span>{error}</span>
+                            </div>
+                        )}
+
+                        <button className="btn btn-primary login-submit" type="submit" disabled={busy}>
+                            {busy ? <div className="spinner" aria-hidden="true" /> : <LogIn size={15} aria-hidden="true" />}
+                            {busy ? 'Signing in…' : 'Sign in'}
+                        </button>
+                    </form>
+
+                    <div className="login-demo">
+                        <div className="login-demo-head">
+                            <ShieldCheck size={13} aria-hidden="true" />
+                            Role model — select to fill the email
+                        </div>
+                        {DEMO_ROLES.map(account => (
+                            <button
+                                key={account.email}
+                                type="button"
+                                className={`login-demo-row${email === account.email ? ' is-active' : ''}`}
+                                onClick={() => { setEmail(account.email); setError(null) }}
+                                aria-pressed={email === account.email}
+                            >
+                                <span className="login-demo-role">{account.role}</span>
+                                <span className="login-demo-grants">{account.grants}</span>
+                            </button>
+                        ))}
+
+                        {authRequired === false && (
+                            <p className="login-note">
+                                Role enforcement is disabled on this instance
+                                (<code>AUTH_ENABLED=false</code>), so the API is open.
+                                Signing in still sets your identity for the audit trail.
+                            </p>
+                        )}
+                    </div>
+                </div>
+            </main>
         </div>
     )
 }

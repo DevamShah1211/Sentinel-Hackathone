@@ -696,30 +696,88 @@ tr:last-child td { border-bottom: none; }
 /* ═══════════════════════════════════════════════════════════════
    Sign-in
 ═══════════════════════════════════════════════════════════════ */
+/* Two panels: what the platform is, and the way in. The single centred card
+   this replaced left roughly 85% of a desktop screen empty, which read as an
+   unfinished page rather than a considered one — and wasted the first screen an
+   evaluator sees, which is the one place worth saying what this is. */
 .login-shell {
   min-height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
   background:
     radial-gradient(1100px 620px at 12% -10%, rgba(59,130,246,0.16), transparent 62%),
     radial-gradient(900px 520px at 105% 108%, rgba(168,85,247,0.12), transparent 60%),
     var(--bg-base);
 }
 
-.login-card {
-  box-shadow: var(--shadow-lg);
-  width: 100%;
-  max-width: 424px;
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  padding: 28px;
-  box-shadow: 0 24px 64px rgba(0,0,0,0.5);
+.login-aside {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 30px;
+  padding: 56px clamp(36px, 5vw, 76px);
+  border-right: 1px solid var(--border);
+  /* A faint sheet so the two halves read as distinct surfaces rather than one
+     flat plane with a line drawn on it. */
+  background: linear-gradient(160deg, rgba(255,255,255,0.022), transparent 60%);
 }
 
-.login-brand { display: flex; align-items: center; gap: 13px; margin-bottom: 24px; color: var(--accent); }
+.login-lede {
+  margin: 0;
+  max-width: 46ch;
+  font-size: 17px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+
+.login-capabilities { list-style: none; margin: 0; padding: 0; display: grid; gap: 18px; }
+.login-capabilities li { display: flex; gap: 13px; align-items: flex-start; }
+.login-capabilities svg { color: var(--accent); flex: none; margin-top: 2px; }
+.login-capabilities strong {
+  display: block; font-size: 13.5px; font-weight: 650;
+  color: var(--text-primary); margin-bottom: 3px;
+}
+.login-capabilities span { font-size: 13px; line-height: 1.5; color: var(--text-muted); }
+
+.login-aside-foot {
+  font-size: 11.5px;
+  letter-spacing: 0.3px;
+  color: var(--text-muted);
+  border-top: 1px solid var(--border);
+  padding-top: 18px;
+}
+
+.login-main {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 48px clamp(24px, 4vw, 56px);
+}
+
+.login-card {
+  width: 100%;
+  max-width: 392px;
+}
+
+.login-heading {
+  margin: 0 0 4px;
+  font-size: 25px;
+  font-weight: 680;
+  letter-spacing: -0.3px;
+  color: var(--text-primary);
+}
+.login-sub { margin: 0 0 26px; font-size: 13.5px; color: var(--text-secondary); }
+
+/* Below 900px the two panels stack, and the marketing half is dropped rather
+   than pushing the form off the first screen — on a phone the only thing that
+   matters is signing in. */
+@media (max-width: 900px) {
+  .login-shell { grid-template-columns: 1fr; }
+  .login-aside { display: none; }
+  .login-main { padding: 32px 20px; }
+}
+
+.login-brand { display: flex; align-items: center; gap: 13px; color: var(--accent); }
 .login-title { font-size: 21px; font-weight: 700; letter-spacing: 2.5px; color: var(--text-primary); }
 .login-subtitle { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
 
@@ -761,9 +819,12 @@ tr:last-child td { border-bottom: none; }
   transform: translateX(2px);
 }
 .login-demo-row { transition: all 0.15s var(--ease); }
-/* The rows sign you in on click. Nothing said so, so they read as a legend. */
+/* The rows fill the email field. They used to sign you straight in, because the
+   password was in the bundle; it no longer is, so the affordance changed and
+   this label changed with it. A control that promises more than it does is
+   worse than one that says nothing. */
 .login-demo-row::after {
-  content: 'Use';
+  content: 'Fill';
   margin-left: auto;
   font-size: 10px;
   font-weight: 700;
@@ -772,9 +833,21 @@ tr:last-child td { border-bottom: none; }
   opacity: 0;
   transition: opacity 0.15s var(--ease);
 }
-.login-demo-row:hover::after { opacity: 1; color: var(--accent); }
+.login-demo-row:hover::after,
+.login-demo-row:focus-visible::after { opacity: 1; color: var(--accent); }
+
+/* The selected role is the one whose email is in the form. Without this the
+   panel gives no feedback and the click appears to have done nothing. */
+.login-demo-row.is-active {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+.login-demo-row.is-active::after { content: 'Selected'; opacity: 1; color: var(--accent); }
+
 .login-demo-role { font-size: 12.5px; font-weight: 600; color: var(--text-primary); min-width: 108px; }
-.login-demo-grants { font-size: 11px; color: var(--text-muted); }
+/* Was --text-muted, which fell below 4.5:1 on this surface and made the one
+   line explaining each role the hardest thing on the page to read. */
+.login-demo-grants { font-size: 11.5px; line-height: 1.45; color: var(--text-secondary); }
 
 .login-note { margin-top: 10px; font-size: 11px; line-height: 1.6; color: var(--text-muted); }
 .login-note code {

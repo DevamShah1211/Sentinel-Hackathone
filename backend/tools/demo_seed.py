@@ -32,6 +32,18 @@ import requests
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from tools.api_auth import authenticated_session  # noqa: E402
+
+# One session for the run; post_detection is called per sighting.
+_API = None
+
+
+def api_session(api_base: str):
+    global _API
+    if _API is None:
+        _API = authenticated_session(api_base)
+    return _API
+
 from app.settings import settings  # noqa: E402
 from app.vision import PlateDetector, TrackManager, aggregate_track  # noqa: E402
 
@@ -68,8 +80,11 @@ def post_detection(api_base: str, camera_native_id: str, plate: str,
                    confidence: float, pts_ms: int, track_id: str,
                    reads: list, grammar, crop_uri: str | None = None,
                    detected_at: str | None = None) -> bool:
+    api = api_session(api_base)
+    if api is None:
+        return False
     try:
-        response = requests.post(
+        response = api.post(
             f"{api_base}/detections",
             json={
                 "camera_native_id": camera_native_id,

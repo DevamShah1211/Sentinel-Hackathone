@@ -34,6 +34,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from tools.api_auth import authenticated_session  # noqa: E402
+
 os.environ.setdefault("OPENCV_FFMPEG_CAPTURE_OPTIONS", "rtsp_transport;tcp")
 
 import cv2  # noqa: E402
@@ -94,7 +96,10 @@ def register(camera: dict, api_base: str) -> int:
         "model": camera.get("model"),
     }
     try:
-        response = requests.post(f"{api_base}/cameras", json=payload, timeout=30)
+        api = authenticated_session(api_base)
+        if api is None:
+            return 1
+        response = api.post(f"{api_base}/cameras", json=payload, timeout=30)
         response.raise_for_status()
     except requests.RequestException as exc:
         print(f"Registration failed: {exc}", file=sys.stderr)

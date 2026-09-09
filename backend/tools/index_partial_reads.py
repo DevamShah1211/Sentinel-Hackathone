@@ -31,6 +31,8 @@ import requests
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from tools.api_auth import authenticated_session  # noqa: E402
+
 import onnxruntime as ort  # noqa: E402
 
 ort.set_default_logger_severity(4)
@@ -129,7 +131,10 @@ def main() -> int:
         "plate_format": grammar.fmt,
         "grammar_corrections": grammar.corrections,
     }
-    response = requests.post(f"{args.api_base}/detections", json=body, timeout=25)
+    api = authenticated_session(args.api_base)
+    if api is None:
+        return 1
+    response = api.post(f"{args.api_base}/detections", json=body, timeout=25)
     response.raise_for_status()
     print(f"\nWritten to {args.camera} as a PARTIAL read: {plate}  (crop {crop_uri})")
     print("Search it with fuzzy match on; the UI marks it unverified.")

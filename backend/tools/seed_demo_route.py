@@ -37,6 +37,8 @@ import requests
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from tools.api_auth import authenticate  # noqa: E402
+
 from app.plate_grammar import plausible_in_gujarat  # noqa: E402
 from app.settings import settings  # noqa: E402
 from app.vision import PlateDetector, TrackManager, aggregate_track  # noqa: E402
@@ -251,6 +253,9 @@ def main() -> int:
 
     start = datetime.now(timezone.utc) - timedelta(hours=2)
     session = requests.Session()
+    # Detection ingest is authenticated: the index is the evidentiary record.
+    if not authenticate(session, args.api_base):
+        return 1
     written = alerts = 0
     missing: list[str] = []
 

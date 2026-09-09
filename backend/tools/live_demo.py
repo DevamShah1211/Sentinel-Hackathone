@@ -49,6 +49,20 @@ import requests  # noqa: E402
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from tools.api_auth import authenticated_session  # noqa: E402
+
+# One authenticated session for the whole run. The publish path is called once
+# per recognised vehicle, and logging in each time would add a round trip to
+# every detection during a live demonstration.
+_API: "requests.Session | None" = None
+
+
+def api_session(api_base: str):
+    global _API
+    if _API is None:
+        _API = authenticated_session(api_base)
+    return _API
+
 import onnxruntime as ort  # noqa: E402
 
 ort.set_default_logger_severity(4)
@@ -149,16 +163,19 @@ def check(source: str, seconds: int) -> int:
 
 def register(api_base: str, source: str) -> bool:
     """Register the demo feed as a camera so sightings have somewhere to land."""
+    api = api_session(api_base)
+    if api is None:
+        return False
     try:
-        existing = requests.get(f"{api_base}/cameras",
-                                params={"limit": 200}, timeout=15).json()
+        existing = api.get(f"{api_base}/cameras",
+                           params={"limit": 200}, timeout=15).json()
         if any(c.get("native_id") == CAMERA_ID for c in existing):
             return True
     except requests.RequestException:
         pass
 
     try:
-        response = requests.post(
+        response = api.post(
             f"{api_base}/cameras",
             json={
                 "native_id": CAMERA_ID,
@@ -186,8 +203,11 @@ def register(api_base: str, source: str) -> bool:
 
 def arm(api_base: str, plate: str) -> None:
     """Put a plate on the watchlist so recognising it raises a visible alert."""
+    api = api_session(api_base)
+    if api is None:
+        return
     try:
-        response = requests.post(
+        response = api.post(
             f"{api_base}/watchlist",
             json={
                 "plate_text": plate.upper().strip(),
@@ -222,8 +242,11 @@ def publish(api_base: str, plate: str, confidence: float, grammar, reads, crop) 
         except cv2.error:
             pass
 
+    api = api_session(api_base)
+    if api is None:
+        return
     try:
-        response = requests.post(
+        response = api.post(
             f"{api_base}/detections",
             json={
                 "camera_native_id": CAMERA_ID,
