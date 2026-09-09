@@ -399,6 +399,13 @@ class SceneObservationIn(BaseModel):
     model_config = {"extra": "forbid"}
 
 
+class SceneBatchIn(BaseModel):
+    """A run of buckets, normally one camera's window."""
+    observations: list[SceneObservationIn]
+
+    model_config = {"extra": "forbid"}
+
+
 @router.post("/scene", summary="Ingest one minute of scene counts")
 async def ingest_scene_observation(
     body: SceneObservationIn,
@@ -453,6 +460,82 @@ async def ingest_scene_observation(
     ))
     await db.commit()
     return {"status": "created", "camera": camera.native_id}
+
+
+@router.post("/scene/batch", summary="Ingest many scene buckets at once")
+async def ingest_scene_batch(
+    body: SceneBatchIn,
+    db: AsyncSession = Depends(get_db),
+    principal: Principal = RequireOperator,
+):
+    """
+    Write a run of buckets in one round trip.
+
+    A worker analysing a camera produces one bucket a minute, and posting each
+    one individually means 1,440 requests per camera per day — which at any real
+    camera count is both pointless load and, correctly, rate-limited. Batching
+    is what the ingest path would need in a deployment, so it exists here rather
+    than being worked around with a sleep in the seeding tool.
+
+    Idempotent per bucket, on the same (camera, bucket_start) key as the single
+    write, and the whole batch commits once: a partially applied window is
+    harder to reason about than one that failed cleanly.
+    """
+    if not body.observations:
+        return {"status": "ok", "created": 0, "updated": 0}
+
+    wanted = {o.camera_native_id for o in body.observations}
+    cameras = {
+        c.native_id: c for c in (await db.execute(
+            select(Camera).where(Camera.native_id.in_(wanted))
+        )).scalars().all()
+    }
+    missing = sorted(wanted - set(cameras))
+    if missing:
+        raise HTTPException(404, f"Unknown camera(s): {', '.join(missing)}")
+
+    # One query for everything already stored in this span, rather than a
+    # SELECT per bucket — the difference between one round trip and a thousand.
+    starts = []
+    for o in body.observations:
+        start = o.bucket_start
+        if start.tzinfo is None:
+            start = start.replace(tzinfo=timezone.utc)
+        starts.append(start)
+
+    existing_rows = (await db.execute(
+        select(SceneObservation).where(
+            SceneObservation.camera_id.in_([c.id for c in cameras.values()]),
+            SceneObservation.bucket_start >= min(starts),
+            SceneObservation.bucket_start <= max(starts),
+        )
+    )).scalars().all()
+    existing = {(str(r.camera_id), r.bucket_start): r for r in existing_rows}
+
+    created = updated = 0
+    for observation, start in zip(body.observations, starts):
+        camera = cameras[observation.camera_native_id]
+        row = existing.get((str(camera.id), start))
+        if row is not None:
+            row.frames_sampled = observation.frames_sampled
+            row.counts_by_label = observation.counts_by_label
+            row.counts_by_category = observation.counts_by_category
+            row.max_confidence = observation.max_confidence
+            updated += 1
+        else:
+            db.add(SceneObservation(
+                camera_id=camera.id,
+                bucket_start=start,
+                bucket_seconds=observation.bucket_seconds,
+                frames_sampled=observation.frames_sampled,
+                counts_by_label=observation.counts_by_label,
+                counts_by_category=observation.counts_by_category,
+                max_confidence=observation.max_confidence,
+            ))
+            created += 1
+
+    await db.commit()
+    return {"status": "ok", "created": created, "updated": updated}
 
 
 @router.get("/scene/summary", summary="Vehicle and person counts across the grid")
@@ -542,3 +625,48 @@ async def scene_by_camera(
     ranked = sorted(per_camera.values(),
                     key=lambda r: -(r["vehicles"] + r["people"]))
     return {"window_hours": hours, "cameras": ranked[:limit]}
+
+
+@router.get("/scene/hourly", summary="Activity by hour of day")
+async def scene_hourly(
+    db: AsyncSession = Depends(get_db),
+    hours: int = Query(24, ge=1, le=168),
+    principal: Principal = RequireViewer,
+):
+    """
+    Vehicle and person counts bucketed by hour, for the activity chart.
+
+    Aggregated in the database rather than in the browser: a week of minute
+    buckets across a full grid is on the order of a million rows, and shipping
+    those to a page that will draw 24 bars is the kind of thing that works in a
+    demonstration and falls over in a deployment.
+
+    Hours are returned in IST. The stored bucket is UTC, and the operator asking
+    "when is this junction busy" means local time, so the conversion belongs
+    here rather than in each client that might get the offset wrong.
+    """
+    since = datetime.now(timezone.utc) - timedelta(hours=hours)
+
+    rows = (await db.execute(
+        select(SceneObservation.bucket_start,
+               SceneObservation.counts_by_category)
+        .where(SceneObservation.bucket_start >= since)
+    )).all()
+
+    ist = timezone(timedelta(hours=5, minutes=30))
+    by_hour = {h: {"hour": h, "vehicles": 0, "people": 0, "buckets": 0}
+               for h in range(24)}
+
+    for bucket_start, by_category in rows:
+        if bucket_start.tzinfo is None:
+            bucket_start = bucket_start.replace(tzinfo=timezone.utc)
+        entry = by_hour[bucket_start.astimezone(ist).hour]
+        entry["vehicles"] += (by_category or {}).get("vehicle", 0)
+        entry["people"] += (by_category or {}).get("person", 0)
+        entry["buckets"] += 1
+
+    return {
+        "window_hours": hours,
+        "timezone": "IST (UTC+5:30)",
+        "hours": [by_hour[h] for h in range(24)],
+    }

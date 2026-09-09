@@ -65,6 +65,8 @@ export const getSceneSummary = (hours = 24) =>
     api.get('/analytics/scene/summary', { params: { hours } }).then(r => r.data)
 export const getSceneByCamera = (hours = 24, limit = 30) =>
     api.get('/analytics/scene/by-camera', { params: { hours, limit } }).then(r => r.data)
+export const getSceneHourly = (hours = 24) =>
+    api.get('/analytics/scene/hourly', { params: { hours } }).then(r => r.data)
 export const getCameraStats = () => api.get('/cameras/stats').then(r => r.data)
 export const syncCatalogue = () => api.post('/ingest/sync').then(r => r.data)
 export const getIngestStatus = () => api.get('/ingest/status').then(r => r.data)

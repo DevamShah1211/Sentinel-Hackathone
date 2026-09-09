@@ -126,6 +126,68 @@ ws.onmessage = e => {
 Alerts are pushed as they are raised. For systems that cannot hold a socket open,
 `GET /api/v1/alerts?status=new` polls the same data.
 
+### 2.5 Push scene counts (vehicle / person / object detection)
+
+The analytics tier that works where ANPR cannot. MEASUREMENTS §2g records the
+finding that no camera on the sandbox grid produces a readable plate — 4 to 14
+pixels per character against the 20-30 OCR needs — while the same frames contain
+vehicles and pedestrians a detector resolves comfortably. A department running
+its own detector can push counts here.
+
+Counts are aggregated into **one bucket per camera per minute** before they are
+posted. The peak simultaneous count per class is kept, not the sum across
+frames: summing counts a parked car once per sampled frame, producing a number
+that grows with sampling rate rather than with traffic.
+
+```bash
+curl -s -X POST http://<host>/api/v1/analytics/scene \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{
+        "camera_native_id": "cam10",
+        "bucket_start": "2026-09-09T10:56:00Z",
+        "bucket_seconds": 60,
+        "frames_sampled": 60,
+        "counts_by_label": {"car": 3, "motorcycle": 4, "person": 5},
+        "counts_by_category": {"vehicle": 7, "person": 5},
+        "max_confidence": 0.87
+      }'
+```
+
+`frames_sampled` is required and load-bearing: without it a count of zero cannot
+be distinguished from a camera nobody analysed, which are different operational
+states and are shown differently on the Grid Health page.
+
+Use the batch endpoint for anything more than a few buckets — one request per
+minute per camera is 1,440 requests/camera/day and is rate-limited:
+
+```bash
+curl -s -X POST http://<host>/api/v1/analytics/scene/batch \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"observations": [ /* up to a few hundred bucket objects */ ]}'
+```
+
+Both writes are idempotent on `(camera, bucket_start)`: a worker that restarts
+mid-minute re-sends the bucket it was building, and re-analysing recorded
+footage corrects the row rather than duplicating it.
+
+Reading back:
+
+```bash
+# Grid totals and class mix over a window
+curl -s "http://<host>/api/v1/analytics/scene/summary?hours=24" -H "$AUTH"
+
+# Busiest cameras first
+curl -s "http://<host>/api/v1/analytics/scene/by-camera?hours=24" -H "$AUTH"
+
+# Activity by hour of day, returned in IST
+curl -s "http://<host>/api/v1/analytics/scene/hourly?hours=24" -H "$AUTH"
+```
+
+**These counts are a throughput estimate, not a vehicle census.** Peak-per-minute
+summed over a window counts a vehicle standing at a junction for three minutes
+three times. Every response carries that caveat in a `note` field and the UI
+prints it; anything reported onward should keep it.
+
 ---
 
 ## 3. Conventions
