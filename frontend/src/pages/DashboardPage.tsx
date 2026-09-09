@@ -47,7 +47,7 @@ interface Detection {
 
 interface AlertRecord {
     id: string; plate_text: string; reason: string; severity: string
-    status: string; matched_at: string; camera_name: string
+    status: string; matched_at: string; detected_at?: string; camera_name: string
     match_type: string; score: number; case_ref?: string
 }
 
@@ -267,7 +267,8 @@ export default function DashboardPage({ wsAlerts = [] }: { wsAlerts?: LiveAlert[
                                                 <div className="ops-item-title">{a.plate_text}</div>
                                                 <div className="ops-item-sub">{a.reason} · {a.camera_name}</div>
                                             </div>
-                                            <span className="ops-item-time">{time(a.matched_at)}</span>
+                                            {/* Sighting time, not indexing time — see AlertsPage. */}
+                                            <span className="ops-item-time">{time(a.detected_at ?? a.matched_at)}</span>
                                         </button>
                                     ))}
                                 </div>

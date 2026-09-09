@@ -51,60 +51,99 @@ EVIDENCE_DIR = Path(settings.evidence_crop_dir)
 
 # One entry per vehicle. Cameras and minute offsets differ so the reconstructed
 # routes are genuinely distinct.
+# The watchlist the demonstration runs against.
+#
+# Seeded here, with the routes, because the two have to agree: an alert can only
+# exist for a plate that is both listed and seen. Previously the watchlist held
+# one entry, so every alert on the dashboard was the same registration five
+# times over — which showed that alerting fires, and nothing about triage.
+#
+# Varying reason and severity is what makes the alerts page legible: an operator
+# reads severity colour before they read text, and a column of identical red
+# rows carries no information.
+WATCHLIST = [
+    {"plate_text": "GJ01KA7392", "reason": "stolen", "severity": "critical",
+     "case_ref": "FIR/2026/0912", "entity_type": "vehicle",
+     "description": "Reported stolen from Navrangpura. Cloned plate suspected — "
+                    "sighted in two districts within the hour."},
+    {"plate_text": "GJ18DH2745", "reason": "wanted", "severity": "high",
+     "case_ref": "FIR/2026/0884", "entity_type": "vehicle",
+     "description": "Vehicle sought in connection with an ongoing enquiry."},
+    {"plate_text": "MH12QP5837", "reason": "suspicious", "severity": "medium",
+     "case_ref": "INT/2026/0271", "entity_type": "vehicle",
+     "description": "Out-of-state vehicle flagged for repeated night transits."},
+    {"plate_text": "RJ14SL3926", "reason": "blacklisted", "severity": "low",
+     "case_ref": "TRF/2026/1190", "entity_type": "vehicle",
+     "description": "Commercial permit lapsed; stop and verify documentation."},
+]
+
+
 JOURNEYS = [
+    # Timings are set against the real distances between these cameras, so the
+    # speed the route view computes for each leg is one a vehicle could actually
+    # have driven. The first version moved a car 263 km in 4 minutes — 3,900
+    # km/h — which flagged as impossible for the right reason but read as broken
+    # data rather than a detected clone.
+    #
+    # Ahmedabad city legs sit at 24-32 km/h, which is ordinary for that traffic.
     {
-        "plate": "GJ99AB1234",
-        "note": "City centre, then an impossible jump to Rajkot",
+        "plate": "GJ01KA7392",
+        "note": "City centre, then the same plate 263 km away — a cloned registration",
         "legs": [
             ("cam01", 0),    # Chimanbhai Bridge
-            ("cam14", 6),    # Delight RLVD       ~2.6 km
-            ("cam04", 14),   # Paldi Circle       ~4.5 km
-            ("cam13", 21),   # C N Vidyalaya      ~3.0 km
-            ("cam17", 25),   # Rajkot — 215 km away. Impossible, and flagged.
+            ("cam14", 5),    # Delight RLVD        2.0 km road   23 km/h
+            ("cam04", 17),   # Paldi Circle        6.3 km        32 km/h
+            ("cam13", 26),   # C N Vidyalaya       4.0 km        27 km/h
+            # Rajkot, 263 km by road, 79 minutes later: 200 km/h implied.
+            # Chosen deliberately. Fast enough to be impossible on the
+            # Ahmedabad-Rajkot highway, close enough to plausible that it reads
+            # as a cloned plate rather than a data error — which is the case an
+            # investigator actually meets. A jury can check the arithmetic.
+            ("cam17", 105),
         ],
     },
     {
-        "plate": "GJ98CD5678",
-        "note": "Northbound towards Gandhinagar",
+        "plate": "GJ18DH2745",
+        "note": "Northbound out of the city towards Gandhinagar",
         "legs": [
             ("cam04", 8),    # Paldi Circle
-            ("cam02", 17),   # Janpath, Ashram Road
-            ("cam05", 29),   # Visat Teen Rasta
-            ("cam12", 44),   # Adalaj Toll Naka
+            ("cam02", 14),   # Janpath, Ashram Road   3.1 km   31 km/h
+            ("cam05", 33),   # Visat Teen Rasta      10.2 km   32 km/h
+            ("cam12", 51),   # Adalaj Toll Naka       9.3 km   31 km/h
         ],
     },
     {
-        "plate": "MH99DE1433",
+        "plate": "MH12QP5837",
         "note": "Out-of-state vehicle crossing the city",
         "legs": [
             ("cam15", 3),    # Suvidha Park
-            ("cam13", 15),   # C N Vidyalaya
-            ("cam14", 26),   # Delight RLVD
-            ("cam03", 40),   # ONGC, Chandkheda
+            ("cam13", 18),   # C N Vidyalaya       7.2 km   29 km/h
+            ("cam14", 29),   # Delight RLVD        5.5 km   30 km/h
+            ("cam03", 47),   # ONGC, Chandkheda    7.8 km   26 km/h
         ],
     },
     {
-        "plate": "GJ97JV7219",
-        "note": "Short hop, two sightings only",
+        "plate": "GJ27BG4108",
+        "note": "Two sightings only — a vehicle that left the covered area",
         "legs": [
             ("cam16", 12),   # Visat P2
-            ("cam05", 19),   # Visat Teen Rasta
+            ("cam05", 14),   # Visat Teen Rasta    0.3 km   9 km/h (adjacent junction)
         ],
     },
     {
-        "plate": "RJ99GH9012",
-        "note": "Northern corridor",
+        "plate": "RJ14SL3926",
+        "note": "Northern corridor, inbound from the toll plaza",
         "legs": [
             ("cam12", 5),    # Adalaj Toll Naka
-            ("cam05", 22),   # Visat Teen Rasta
-            ("cam01", 34),   # Chimanbhai Bridge
+            ("cam05", 24),   # Visat Teen Rasta    9.3 km   29 km/h
+            ("cam01", 36),   # Chimanbhai Bridge   6.0 km   30 km/h
         ],
     },
     {
-        "plate": "GJ96XY4455",
-        "note": "Single sighting — a vehicle seen once",
+        "plate": "GJ03CJ6081",
+        "note": "Single sighting — a vehicle seen once and not again",
         "legs": [
-            ("cam13", 30),   # C N Vidyalaya
+            ("cam13", 30),
         ],
     },
 ]
@@ -227,6 +266,34 @@ def reset_index(api_base: str) -> None:
     asyncio.run(clear())
 
 
+def seed_watchlist(session: requests.Session, api_base: str) -> int:
+    """
+    Put the demonstration plates on the watchlist, skipping any already there.
+
+    Runs before the sightings are posted, because check_and_alert only raises an
+    alert for a plate that is already listed when the detection arrives.
+    """
+    try:
+        existing = {e.get("plate_text") for e in
+                    session.get(f"{api_base}/watchlist", timeout=20).json()}
+    except (requests.RequestException, ValueError):
+        existing = set()
+
+    added = 0
+    for entry in WATCHLIST:
+        if entry["plate_text"] in existing:
+            continue
+        try:
+            response = session.post(f"{api_base}/watchlist", json=entry, timeout=20)
+            if response.ok:
+                added += 1
+        except requests.RequestException:
+            pass
+    print(f"Watchlist: {added} added, {len(existing)} already present.")
+    print()
+    return added
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Seed distinct demonstration journeys")
     parser.add_argument("--video", default=str(DEFAULT_VIDEO))
@@ -256,6 +323,8 @@ def main() -> int:
     # Detection ingest is authenticated: the index is the evidentiary record.
     if not authenticate(session, args.api_base):
         return 1
+    seed_watchlist(session, args.api_base)
+
     written = alerts = 0
     missing: list[str] = []
 

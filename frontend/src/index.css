@@ -560,9 +560,29 @@ tr:last-child td { border-bottom: none; }
   transition: border-color 0.15s;
 }
 
-.alert-item.new  { border-left: 3px solid var(--red); }
+/* The rail carries severity while an alert is unhandled, and workflow state
+   once someone has touched it.
+
+   It used to be red for every new alert regardless of severity, so a lapsed
+   commercial permit and a stolen vehicle presented identically — a wall of red
+   that an operator has to read word by word to triage. Severity is the thing
+   they sort on, and colour is how it gets read first. Once an alert is
+   acknowledged or resolved, its handling state is the more useful signal, so
+   the rail switches to carrying that. */
+/* The bare .new rule is the fallback for an alert with no severity class, and
+   is listed first so the specific ones win. */
+.alert-item.new              { border-left: 3px solid var(--red); }
+.alert-item.new.sev-critical { border-left: 3px solid var(--red); }
+.alert-item.new.sev-high     { border-left: 3px solid var(--yellow); }
+.alert-item.new.sev-medium   { border-left: 3px solid var(--accent); }
+.alert-item.new.sev-low      { border-left: 3px solid var(--text-muted); }
+
 .alert-item.ack  { border-left: 3px solid var(--yellow); }
 .alert-item.resolved { border-left: 3px solid var(--green); opacity: 0.7; }
+
+/* Low and medium alerts also need an icon tint; without these they inherit the
+   default and the dot disagrees with the rail beside it. */
+.alert-icon.low { background: rgba(148,163,184,0.16); color: var(--text-secondary); }
 
 @keyframes slideIn {
   from { transform: translateX(-16px); opacity: 0; }

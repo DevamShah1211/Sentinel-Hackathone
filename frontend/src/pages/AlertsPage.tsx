@@ -23,7 +23,7 @@ function AlertRow({ a, onAck, onResolve, onOpen }: {
 }) {
     return (
         <div
-            className={`alert-item ${a.status} is-clickable`}
+            className={`alert-item ${a.status} sev-${a.severity} is-clickable`}
             role="button"
             tabIndex={0}
             title="Open full vehicle detail"
@@ -36,7 +36,11 @@ function AlertRow({ a, onAck, onResolve, onOpen }: {
             <div className="alert-body">
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                     <span className="plate-chip">{a.plate_text}</span>
-                    <span className={`badge-pill ${a.severity === 'critical' ? 'pill-red' : a.severity === 'high' ? 'pill-yellow' : 'pill-blue'}`}>
+                    <span className={`badge-pill ${
+                        a.severity === 'critical' ? 'pill-red'
+                        : a.severity === 'high' ? 'pill-yellow'
+                        : a.severity === 'low' ? 'pill-gray'
+                        : 'pill-blue'}`}>
                         {a.reason}
                     </span>
                     <span className={`badge-pill ${a.match_type === 'exact' ? 'pill-green' : 'pill-purple'}`}>
@@ -46,7 +50,15 @@ function AlertRow({ a, onAck, onResolve, onOpen }: {
                 </div>
                 <div className="alert-meta" style={{ marginTop: 6 }}>
                     📷 {a.camera_name} &nbsp;·&nbsp;
-                    🕐 {new Date(a.matched_at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })} IST
+                    {/* When the vehicle passed the camera, not when the alert
+                        row was written. Those differ whenever indexing lags the
+                        footage — as it does for any recorded or backfilled
+                        feed — and it is the sighting time an officer acts on.
+                        Showing matched_at made every alert from one indexing
+                        run share a timestamp, which told the operator nothing
+                        about when anything actually happened. */}
+                    🕐 {new Date(a.detected_at ?? a.matched_at)
+                        .toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })} IST
                     {a.acknowledged_by && <span> &nbsp;·&nbsp; ✅ Ack by {a.acknowledged_by}</span>}
                 </div>
             </div>
@@ -175,6 +187,7 @@ export default function AlertsPage({ wsAlerts }: Props) {
                     { label: 'Match', value: `${open.match_type} · ${(open.score * 100).toFixed(0)}%` },
                     { label: 'Case reference', value: open.case_ref || '—' },
                     { label: 'Status', value: open.status },
+                    { label: 'Seen at', value: new Date(open.detected_at ?? open.matched_at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) + ' IST' },
                     { label: 'Matched at', value: new Date(open.matched_at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) + ' IST' },
                     { label: 'Camera', value: open.camera_name },
                     { label: 'Acknowledged by', value: open.acknowledged_by || 'Not acknowledged' },

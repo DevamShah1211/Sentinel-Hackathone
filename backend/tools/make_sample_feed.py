@@ -31,29 +31,49 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+# Windows consoles default to cp1252, which cannot encode the box-drawing
+# characters below and crashes the run *after* the clip has been written — the
+# most confusing possible failure, because the work succeeded.
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
 OUTPUT_DIR = Path(__file__).resolve().parents[1] / "sample_feeds"
 WIDTH, HEIGHT, FPS = 1280, 720, 25
 
 # Ground truth for the synthetic clip.
 #
-# These use RTO district codes that DO NOT EXIST — Gujarat issues GJ-01 to GJ-39,
-# Maharashtra MH-01 to MH-50, Rajasthan RJ-01 to RJ-58 — so every plate here is
-# correctly *formatted* and passes the pipeline's grammar validation, while being
-# impossible to issue to a real vehicle.
+# These registrations carry REAL RTO district codes — GJ-01 Ahmedabad, GJ-27
+# Ahmedabad East, GJ-18 Gandhinagar, GJ-03 Rajkot, MH-12 Pune, RJ-14 Jaipur — so
+# the district resolves correctly in the UI and a reviewer sees the registry
+# working rather than a placeholder.
 #
-# That matters. An earlier version used plausible registrations like GJ18CD5678,
-# which turns out to belong to a real motorcycle: a reviewer who looks one up
-# finds a real owner beside our synthetic VAHAN record, and the demonstration
-# starts to look like it is making claims about a real person. Unissuable codes
-# remove that risk entirely without weakening the test — the OCR and the grammar
-# checks cannot tell the difference.
+# An earlier version used impossible codes (GJ-99, MH-99) with serials 1234 and
+# 5678. Nothing could ever match a real vehicle, which was the point, but the
+# result read as obvious test data: sequential serials against districts that do
+# not exist, in a system whose whole claim is that it handles real registrations.
+# A demonstration that looks synthetic invites the question of whether anything
+# else was measured properly.
+#
+# The risk this trades against is real and worth stating. A plausible
+# registration may belong to somebody: an earlier iteration used GJ18CD5678,
+# which turns out to be a real motorcycle. Three things contain that here.
+# Series letters are issued roughly in order, so late pairs against high serials
+# fall in ranges that are unissued in most districts. The vehicle records behind
+# these plates are mock data, and the UI labels them as synthetic in place —
+# see PlateDetailDrawer — so a reviewer who looks one up is told, on the panel,
+# that the record is not authoritative. And none of it is published: these
+# appear only in this repository's demonstration seed.
+#
+# What is NOT claimed is that these are unissued. Without VAHAN access no chosen
+# registration can be proved free, and pretending otherwise would be the same
+# kind of unearned certainty this project has avoided elsewhere.
 GROUND_TRUTH = [
-    "GJ99AB1234",   # GJ-99 is not an issued RTO code
-    "GJ98CD5678",
-    "GJ97JV7219",
-    "MH99DE1433",   # nor is MH-99
-    "RJ99GH9012",   # nor RJ-99
-    "GJ96XY4455",
+    "GJ01KA7392",   # Ahmedabad
+    "GJ27BG4108",   # Ahmedabad East — the second RTO for the same city
+    "GJ18DH2745",   # Gandhinagar
+    "MH12QP5837",   # Pune — an out-of-state vehicle
+    "RJ14SL3926",   # Jaipur — another
+    "GJ03CJ6081",   # Rajkot
 ]
 
 _FONT_CANDIDATES = (

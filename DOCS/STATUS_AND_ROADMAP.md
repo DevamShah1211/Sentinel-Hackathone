@@ -95,7 +95,7 @@ assistant; they need a human with the accounts.
 |---|---|---|---|
 | 1 | **Push to GitHub** | person | `git push origin main` from your own terminal, signed in as `DevamShah1211`. The first ten commits of the day are already on GitHub; only the commits made after 19:45 remain to push. |
 | 2 | **Rotate the sandbox password** | person | The sandbox password is public in the repository's early history (six commits, first `851b572`) and still works — confirmed 8 September. Call +91 95370 89982 or write to sentinel.hackathon@gujarat.gov.in. Do this before the repository is reviewed. |
-| 3 | **Record Video 1** (own feed, 2–3 min) | person | Follow `DEMO_SCRIPTS.md`. Seed first with `python tools/seed_demo_route.py --reset`. Six distinct routes; GJ99AB1234 ends with the flagged Rajkot jump. |
+| 3 | **Record Video 1** (own feed, 2–3 min) | person | Follow `DEMO_SCRIPTS.md`. Seed first with `python tools/seed_demo_route.py --reset`. Six distinct routes; GJ01KA7392 ends 263 km away 79 minutes later, flagged as an impossible transition. |
 | 4 | **Record Video 2** (government feed) | person | Shot 14 is cam12. Run `python tools/index_partial_reads.py --live 100 --camera cam12` while a truck is in the lane, then search the voted plate with fuzzy on. |
 | 5 | **Export HLD and presentation to PDF** | person | Any Markdown-to-PDF tool; keep the tables. |
 | 6 | **Deploy a reachable instance** | person | `docker compose up`. Set `AUTH_ENABLED=true`, change `SECRET_KEY` and `DEMO_ADMIN_PASSWORD`. |

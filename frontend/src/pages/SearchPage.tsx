@@ -8,7 +8,10 @@ import PlateDetailDrawer from '../components/PlateDetailDrawer'
 
 // The seeded demonstration vehicles. Clicking one always returns sightings, so a
 // reviewer meeting this page for the first time is one click from seeing it work.
-const EXAMPLE_PLATES = ['GJ99AB1234', 'GJ98CD5678', 'MH99DE1433'] as const
+// Plates the demonstration seed actually indexes, so a click returns results
+// rather than an empty state. GJ01KA7392 is the one worth showing a jury: its
+// route ends 263 km away in the wrong direction, flagged as impossible.
+const EXAMPLE_PLATES = ['GJ01KA7392', 'GJ18DH2745', 'MH12QP5837'] as const
 
 interface VehicleDetails {
     registration_number: string; owner_name: string; vehicle_class: string
