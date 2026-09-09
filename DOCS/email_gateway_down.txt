@@ -1,0 +1,89 @@
+To:      sentinel.hackathon@gujarat.gov.in
+Subject: Camera gateway unreachable after the access update — ports 8554/8889 refusing connections, cctv.corp8.cloud returning 502
+
+------------------------------------------------------------------------
+BEFORE SENDING: replace <Your name> and <Team name>, add your team ID if
+you have one, and attach the two screenshots (VLC error, Cloudflare 502).
+------------------------------------------------------------------------
+
+Dear Sentinel Hackathon Support Team,
+
+Thank you for the update about the new authentication layer. We followed the instructions exactly, including clearing the Sentinel site cookies and
+cache first, but the camera feeds are not reachable from our end.
+
+We are reporting this because the failure happens before any password is requested, so we do not think new credentials would resolve it.
+
+WHAT HAPPENS IN VLC (your documented method)
+
+Using the exact URL format from your email:
+
+    rtsp://103.250.160.189:8554/stream/cam01
+
+VLC reports:
+
+    Connection failed:
+    VLC could not connect to "103.250.160.189:8554".
+    Your input can't be opened:
+    VLC is unable to open the MRL 'rtsp://103.250.160.189:8554/stream/cam01'
+
+The same result for cam04 and cam14. VLC never reaches the username and password prompt, so the authentication step is never attempted.
+
+WHAT WE MEASURED
+
+Testing the gateway's TCP ports directly:
+
+    Port 8554 (RTSP)    Connection refused
+    Port 8889 (WebRTC)  Connection refused
+    Port 443 (HTTPS)    Open
+    Port 80 (HTTP)      Open
+
+"Connection refused" is a specific result. It means the server actively rejected the connection rather than dropping it, which indicates no service is listening on that port. A firewall block would time out silently, and a credential problem would require the connection to succeed first in order to return 401. Ports 443 and 80 on the same host accept connections normally, so the host itself is up and reachable.
+
+THE WEB HOST IS ALSO AFFECTED
+
+    https://cctv.corp8.cloud      HTTP 502 Bad Gateway
+    https://sentinel.gujarat.gov.in   HTTP 200 OK (working)
+
+The Cloudflare error page for cctv.corp8.cloud reports "You: Working", "Cloudflare Mumbai: Working", "cctv.corp8.cloud Host: Error" that is
+Cloudflare reporting the origin server behind it is not responding.
+
+We use cctv.corp8.cloud for the camera catalogue and the HLS proxy, so this affects our platform in addition to direct RTSP.
+
+TIMELINE (IST)
+
+    7 Sep, 16:04   Captured 120s from cam14 successfully.
+    7 Sep, 18:09   RTSP returned 401 Unauthorized. Port 8554 still open.
+    8 Sep, 10:45   Working normally again. Swept all 30 cameras.
+    9 Sep, ~10:50  Ports 8554 and 8889 refusing connections.
+                   cctv.corp8.cloud returning 502.
+
+The change between 8 and 9 September is notable: yesterday port 8554 was open and answered with an authentication challenge. Today it refuses the
+connection outright. That looks like a service that has been stopped or moved rather than one rejecting our credentials.
+
+WHAT WE WOULD LIKE TO KNOW
+
+  1. Is the RTSP gateway expected to remain at 103.250.160.189:8554, or has it moved behind sentinel.gujarat.gov.in as part of the update?
+     If the hostname or port has changed, please confirm the new address.
+
+  2. Is cctv.corp8.cloud still the correct host for the camera catalogue and HLS streams? Its origin is currently returning 502.
+
+  3. Should we collect a new password from Resources > Live Camera access even though the connection fails before authentication? We
+     will do so if it helps, but it does not appear to be the cause.
+
+ACCOUNT
+
+    Registered email : devam6205@gmail.com
+    Tested cameras   : cam01, cam04, cam14
+    Tested from      : VLC and directly, with the same result
+
+We are happy to test again at any time and can report back within minutes if you would like confirmation once a change is made at your end. We are
+also glad to be told this is expected during the migration and simply wait knowing that would be just as useful to us as a fix.
+
+We would be grateful for any guidance today, as the submission window is
+short.
+
+Kind regards,
+
+Devam
+KodeMatrix
+devam6205@gmail.com

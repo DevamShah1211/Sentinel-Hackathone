@@ -380,9 +380,20 @@ than searched on demand.
 | Cross-department registry | One question, one answer, regardless of who owns the camera |
 | Purpose-bound audit | Surveillance capability with accountability attached |
 
-**Roadmap** — federation across departments (Model 3), tiered analytics rollout by
-district, VAHAN adapter activation on credential grant, then face recognition and
-additional analytics on the same edge nodes.
+**Scope** — Models 1 and 2, chosen rather than defaulted to. Models 2, 3 and 4 are
+competing answers to departmental fragmentation, not a menu: Model 2 connects
+directly and optimises for the operator, Model 3 federates, Model 4 consolidates.
+Model 1 is foundational and pairs with exactly one of them. At thirty cameras
+under one operator, a federation layer would be ceremony around a problem this
+deployment does not have. Model 3's deliverable also requires federating two
+*different* VMS platforms and we have access to one; Model 4's requires an
+80,000-camera load test on hardware we do not have. We would rather report one
+measured finding than four partial builds. Full reasoning: HLD §1.3.
+
+**Roadmap** — federation across departments (Model 3) once a second incompatible
+VMS is onboarded, tiered analytics rollout by district, VAHAN adapter activation
+on credential grant, then face recognition and additional analytics on the same
+edge nodes.
 
 ---
 

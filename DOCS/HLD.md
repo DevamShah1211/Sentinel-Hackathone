@@ -51,6 +51,67 @@ integration. Each is addressed in Section 9 or Section 10 as part of the scale-o
 or integration path. At 30–50 cameras PostgreSQL does all of it, and adding those
 components would have cost the prototype without improving the demonstration.
 
+### 1.3 Why Models 1 and 2, and not 3 or 4
+
+We chose Model 1 + Model 2 deliberately, not by default, and the reasoning is
+worth stating because the four models are not a menu to be collected.
+
+**Models 2, 3 and 4 are competing answers to the same question.** All three
+address departmental fragmentation, and they differ in where the integration
+sits. Model 2 connects directly to departmental endpoints and optimises for the
+operator's experience. Model 3 inserts a federation layer and optimises for
+systemic interoperability. Model 4 replaces both with a consolidated central VMS.
+Submitting several of them would not demonstrate more capability; it would
+demonstrate that we had not decided which architecture we were arguing for.
+
+Model 1 is the exception, because it is foundational rather than alternative: a
+registry of what cameras exist and where they are is a precondition for every
+other model. So Model 1 pairs with exactly one of 2, 3 or 4, and the pairing is
+the choice.
+
+**Why Model 2 is the right pairing at this scale.** The sandbox is thirty
+cameras under one operator. Federation middleware solves a problem that appears
+when several departments each run their own VMS with their own vendor, and none
+of that is present here — a federation layer over a single grid would be
+ceremony around a problem we do not have. Model 2 gets the operator to a working
+unified view, which is what a thirty-camera deployment actually needs.
+
+**What we would need to build Model 3 honestly.** Its deliverable is a
+middleware federating *at least two different* VMS platforms. We have access to
+one. Federating two adapters we wrote ourselves would prove nothing, because the
+entire difficulty of federation is that other vendors' systems are heterogeneous,
+inconsistently documented and behave in ways the specification does not predict.
+A demonstration against two mocks of our own design tests our understanding of
+our own mocks.
+
+**What we would need to build Model 4 honestly.** Its deliverables include a
+load-test report at approximately 80,000 cameras, GPU-based inference,
+distributed object storage, orchestration and disaster recovery. Our stated
+constraint is a single CPU machine with no GPU. We could draw that architecture,
+and Section 9 does argue the scale-out path with arithmetic — but we could not
+produce the load-test report, and a scalability claim without a measurement is
+the kind of assertion this document is organised to avoid.
+
+Model 4 also requires face recognition, which is the highest-risk capability in
+the programme. Building it as a hackathon feature, against government CCTV, on a
+timescale that permits no proportionality review, is not a decision we were
+willing to take lightly.
+
+**What this decision cost us, stated plainly.** Two models' worth of scope. What
+it bought is that every claim in this submission is either running code or an
+argument explicitly labelled as an argument. Section 6.5 reports a measured
+zero-plate yield across the sandbox grid rather than a demonstration arranged to
+succeed; that finding exists because the effort went into measuring one thing
+properly instead of building four things partially.
+
+**When each of the others becomes the right choice.** Model 3 earns its keep at
+the point where a second department with an incompatible VMS is onboarded and
+direct connection stops scaling — the adapter work Section 3 describes per
+vendor is precisely what a federation layer exists to centralise. Model 4 follows
+when central retention and statewide analytics justify the storage, GPU and
+orchestration it requires; Section 9.3 gives the camera-count thresholds at which
+the components deferred in §1.2 stop being optional.
+
 ---
 
 ## 2. Architecture
