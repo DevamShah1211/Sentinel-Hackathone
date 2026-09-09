@@ -27,7 +27,7 @@ export type StreamProfile = 'high' | 'balanced' | 'low'
 
 export default function LiveTile({
     cameraId, alt, className, style, onStateChange, showRetry = true,
-    profile = 'balanced',
+    profile = 'balanced', fit = 'contain',
 }: {
     cameraId: string
     alt: string
@@ -36,6 +36,19 @@ export default function LiveTile({
     onStateChange?: (s: TileState) => void
     showRetry?: boolean
     profile?: StreamProfile
+    /**
+     * How the frame fills the tile.
+     *
+     * `contain` by default, and deliberately: `cover` crops whatever does not
+     * fit the container, which on a junction camera silently removes the
+     * approach lanes an operator is watching. A letterbox is visible and
+     * honest; a crop looks like the camera's own framing.
+     *
+     * `cover` remains available for a dense grid where every tile is a
+     * thumbnail being scanned rather than read, and where the alternative is
+     * black bars around nine feeds at once.
+     */
+    fit?: 'contain' | 'cover'
 }) {
     const imgRef = useRef<HTMLImageElement | null>(null)
     const [state, setState] = useState<TileState>('connecting')
@@ -97,7 +110,7 @@ export default function LiveTile({
                 alt={alt}
                 className={className}
                 style={{
-                    width: '100%', height: '100%', objectFit: 'cover',
+                    width: '100%', height: '100%', objectFit: fit,
                     background: '#000', display: 'block', ...style,
                 }}
             />

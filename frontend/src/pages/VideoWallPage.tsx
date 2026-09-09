@@ -94,6 +94,10 @@ function VideoTile({ slot, index, onMaximise, onCameraChange, cameras, isMaximis
                 alt={`Live view from ${cam.name}`}
                 onStateChange={handleState}
                 profile={profile}
+                // A wall tile is scanned, not read, and nine letterboxed feeds
+                // would spend most of the grid on black. The hero on the
+                // dashboard is the one that must show the whole frame.
+                fit="cover"
             />
 
             {/* Always-on caption. The hover overlay below carries the controls, but a

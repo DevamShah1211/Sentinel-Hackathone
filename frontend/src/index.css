@@ -1489,20 +1489,20 @@ tr.is-clickable:hover { background: var(--bg-raised); }
    column beside it, so pinning the stage to exactly 16:9 left ~160px of empty
    card below the metadata — and the obvious use for spare space in a
    surveillance view is a larger picture. */
+/* The stage holds the camera's own aspect ratio, and nothing overrides it.
+   An earlier version let flex stretch the stage past 16:9 on tall viewports,
+   which combined with object-fit: cover to crop the sides off the frame — on a
+   junction camera that removes exactly the approach lanes an operator is
+   watching. Letterboxing is the correct failure here: a surveillance feed is
+   evidence, and showing less of it to fill a box is not a trade worth making. */
 .ops-hero-stage {
   position: relative;
-  flex: 1;
-  min-height: 0;
+  width: 100%;
   aspect-ratio: 16 / 9;
   background: #000;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   overflow: hidden;
-}
-@supports (height: 1lh) {
-  /* Where flex can resolve the height, let it win over the aspect ratio so the
-     stage can grow past 16:9 rather than being clamped to it. */
-  .ops-hero-stage { aspect-ratio: auto; min-height: max(320px, 42vh); }
 }
 
 /* Camera facts read as a caption to the video, so they sit on their own inset
