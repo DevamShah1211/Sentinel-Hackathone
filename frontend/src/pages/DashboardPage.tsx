@@ -83,6 +83,39 @@ export default function DashboardPage({ wsAlerts = [] }: { wsAlerts?: LiveAlert[
     const [openPlate, setOpenPlate] = useState<string | null>(null)
     const [loading, setLoading] = useState(true)
 
+    // How many distinct cameras have actually contributed to the index. Derived
+    // from the recent detections rather than fetched, so it costs no request;
+    // it is a floor on the true figure, which is the honest direction to err.
+    const camerasReporting = useMemo(
+        () => new Set(recent.map(d => d.camera_name).filter(Boolean)).size,
+        [recent],
+    )
+
+    // One row per vehicle rather than per sighting.
+    //
+    // A watchlisted car passing five cameras raises five alerts, all correct
+    // and all the same registration — which filled this panel with three copies
+    // of one plate and hid the other three vehicles entirely. An operator
+    // triages by vehicle, so the panel now shows the newest sighting of each
+    // and says how many there were. The full per-sighting list is one click
+    // away on the alerts page.
+    const alertsByVehicle = useMemo(() => {
+        const byPlate = new Map<string, { alert: AlertRecord; count: number }>()
+        for (const a of alerts) {
+            const seen = byPlate.get(a.plate_text)
+            if (!seen) {
+                byPlate.set(a.plate_text, { alert: a, count: 1 })
+                continue
+            }
+            seen.count += 1
+            const at = (x: AlertRecord) => new Date(x.detected_at ?? x.matched_at).getTime()
+            if (at(a) > at(seen.alert)) seen.alert = a
+        }
+        return [...byPlate.values()].sort((x, y) =>
+            new Date(y.alert.detected_at ?? y.alert.matched_at).getTime()
+            - new Date(x.alert.detected_at ?? x.alert.matched_at).getTime())
+    }, [alerts])
+
     const load = useCallback(async () => {
         setLoading(true)
         // Independent requests: one slow or failing panel must not blank the page.
@@ -93,10 +126,26 @@ export default function DashboardPage({ wsAlerts = [] }: { wsAlerts?: LiveAlert[
         if (s.status === 'fulfilled') setSummary(s.value as Summary)
         if (tp.status === 'fulfilled') setTopPlates(tp.value as { plate_text: string; count: number }[])
         if (h.status === 'fulfilled') {
-            setHourly((h.value as { hour: string; count: number }[]).map(r => ({
-                hour: new Date(r.hour).toLocaleTimeString('en-IN', { ...IST, hour: '2-digit', minute: '2-digit' }),
-                count: r.count,
-            })))
+            // Pad to a continuous 24-hour window.
+            //
+            // The API returns only hours that recorded something, so three busy
+            // hours were drawn as three bars evenly spaced across the width —
+            // which reads as steady activity all day rather than a burst inside
+            // a quiet period. A time axis with the empty hours removed is not a
+            // time axis; the gaps are part of what the chart is reporting.
+            const counts = new Map<number, number>()
+            for (const r of h.value as { hour: string; count: number }[]) {
+                counts.set(new Date(r.hour).setMinutes(0, 0, 0), r.count)
+            }
+            const top = new Date().setMinutes(0, 0, 0)
+            const series = Array.from({ length: 24 }, (_, i) => {
+                const at = top - (23 - i) * 3_600_000
+                return {
+                    hour: new Date(at).toLocaleTimeString('en-IN', { ...IST, hour: '2-digit', minute: '2-digit' }),
+                    count: counts.get(at) ?? 0,
+                }
+            })
+            setHourly(series)
         }
         if (c.status === 'fulfilled') {
             const list = c.value as Camera[]
@@ -172,10 +221,20 @@ export default function DashboardPage({ wsAlerts = [] }: { wsAlerts?: LiveAlert[
                         <div className="stat-value green">{summary.detections.last_24h.toLocaleString()}</div>
                         <div className="stat-sub">{summary.detections.unique_plates_24h} unique plates</div>
                     </div>
+                    {/* Was "Total Detections", which on a freshly seeded index
+                        shows the identical number to the card beside it — two
+                        tiles, one fact. Coverage answers a different question:
+                        of the cameras we hold, how many are actually
+                        contributing to the index? That is the number that says
+                        whether the deployment is working. */}
                     <div className="stat-card">
-                        <div className="stat-label">Total Detections</div>
-                        <div className="stat-value">{summary.detections.total.toLocaleString()}</div>
-                        <div className="stat-sub">All-time ANPR index</div>
+                        <div className="stat-label">Cameras Reporting</div>
+                        <div className="stat-value">
+                            {camerasReporting}<span className="stat-value-of">/{summary.cameras.total}</span>
+                        </div>
+                        <div className="stat-sub">
+                            {summary.detections.total.toLocaleString()} detections indexed
+                        </div>
                     </div>
                     <div className="stat-card">
                         <div className="stat-label">New Alerts</div>
@@ -260,12 +319,21 @@ export default function DashboardPage({ wsAlerts = [] }: { wsAlerts?: LiveAlert[
                             ? <div className="pd-empty">No alerts raised. Watchlist matches appear here instantly.</div>
                             : (
                                 <div className="ops-list">
-                                    {alerts.slice(0, 6).map(a => (
-                                        <button key={a.id} className="ops-item" onClick={() => setOpenPlate(a.plate_text)}>
+                                    {alertsByVehicle.map(({ alert: a, count }) => (
+                                        <button key={a.plate_text} className="ops-item" onClick={() => setOpenPlate(a.plate_text)}>
                                             <span className={`ops-sev sev-${a.severity}`} aria-hidden="true" />
                                             <div className="ops-item-main">
-                                                <div className="ops-item-title">{a.plate_text}</div>
-                                                <div className="ops-item-sub">{a.reason} · {a.camera_name}</div>
+                                                <div className="ops-item-title">
+                                                    {a.plate_text}
+                                                    {count > 1 && (
+                                                        <span className="ops-item-count" title={`${count} sightings`}>
+                                                            ×{count}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <div className="ops-item-sub">
+                                                    {a.reason} · last seen {a.camera_name}
+                                                </div>
                                             </div>
                                             {/* Sighting time, not indexing time — see AlertsPage. */}
                                             <span className="ops-item-time">{time(a.detected_at ?? a.matched_at)}</span>
@@ -353,17 +421,33 @@ export default function DashboardPage({ wsAlerts = [] }: { wsAlerts?: LiveAlert[
                     {hourly.length > 0
                         ? (
                             <ResponsiveContainer width="100%" height={200}>
-                                <BarChart data={hourly} margin={{ top: 0, right: 0, bottom: 0, left: -20 }}>
-                                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                                    <XAxis dataKey="hour" tick={{ fill: '#6b7c98', fontSize: 10 }} />
-                                    <YAxis tick={{ fill: '#6b7c98', fontSize: 10 }} />
+                                <BarChart data={hourly} margin={{ top: 4, right: 4, bottom: 0, left: -8 }}>
+                                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+                                    {/* Twenty-four labels will not fit legibly, so
+                                        every fourth is drawn — the axis stays
+                                        readable and the tooltip carries the exact
+                                        hour for any bar. */}
+                                    <XAxis
+                                        dataKey="hour"
+                                        interval={3}
+                                        tickLine={false}
+                                        axisLine={{ stroke: 'var(--border)' }}
+                                        tick={{ fill: '#6b7c98', fontSize: 10 }}
+                                    />
+                                    <YAxis
+                                        allowDecimals={false}
+                                        tickLine={false}
+                                        axisLine={false}
+                                        width={28}
+                                        tick={{ fill: '#6b7c98', fontSize: 10 }}
+                                    />
                                     <Tooltip
                                         contentStyle={{ background: 'var(--bg-raised)', border: '1px solid var(--border-light)', borderRadius: 8, fontSize: 12 }}
                                         labelStyle={{ color: 'var(--text-primary)' }}
                                         itemStyle={{ color: 'var(--accent)' }}
                                         cursor={{ fill: 'var(--accent-soft)' }}
                                     />
-                                    <Bar dataKey="count" fill="var(--accent)" radius={[4, 4, 0, 0]} />
+                                    <Bar dataKey="count" fill="var(--accent)" radius={[3, 3, 0, 0]} maxBarSize={26} />
                                 </BarChart>
                             </ResponsiveContainer>
                         )

@@ -1041,13 +1041,17 @@ tr:last-child td { border-bottom: none; }
 }
 
 /* ── System status panel ───────────────────────────────────────── */
+/* Three columns, not auto-fit. There are six status rows, and auto-fit chose
+   four at desktop width — which leaves two items alone on a second row beside a
+   blank cell. Six divides evenly by three, so the block stays rectangular. */
 .status-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 2px;
   background: var(--border);
   border: 1px solid var(--border);
   border-radius: var(--radius);
+  overflow: hidden;
   overflow: hidden;
 }
 
@@ -1353,14 +1357,52 @@ tr.is-clickable:hover { background: var(--bg-raised); }
    A hero stream beside the two things an operator reacts to. Below 1200px the
    side panels drop under the stream rather than squeezing it, because a
    half-width video is no longer useful for identifying anything. */
+/* The operations row: the stream on the left, what needs attention on the right.
+   Both columns are stretched to the taller of the two so their bottom edges
+   line up. Left to themselves they ended 120px apart, which is the kind of
+   ragged edge that reads as unfinished even when nobody can say why. */
 .ops-row {
   display: grid;
-  grid-template-columns: minmax(0, 1.55fr) minmax(300px, 1fr);
+  grid-template-columns: minmax(0, 1.55fr) minmax(320px, 1fr);
   gap: 16px;
   margin-bottom: 16px;
+  align-items: stretch;
 }
+.ops-row > .ops-hero,
+.ops-row > .ops-side { min-height: 0; }
+
+/* The right column sizes to its content, with the last panel taking up whatever
+   slack is left so the column still ends level with the video beside it.
+   Forcing both panels to fixed fractions was the first attempt and was worse:
+   four alerts in a panel sized for eight left a large hole, and an empty
+   rectangle reads as a bug rather than as spare capacity. */
+.ops-side {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 16px;
+  min-height: 0;
+}
+.ops-side > .ops-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+/* Lists scroll inside their panel rather than stretching it. The alert panel is
+   capped so a busy night cannot push the recognitions panel off the screen. */
+.ops-side .ops-list {
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+.ops-side > .ops-panel:first-child .ops-list { max-height: 320px; }
+.ops-side > .ops-panel:last-child { min-height: 240px; }
+.ops-side > .ops-panel:last-child .ops-list { flex: 1; }
+
 @media (max-width: 1200px) {
   .ops-row { grid-template-columns: minmax(0, 1fr); }
+  .ops-side { grid-template-rows: auto auto; }
+  .ops-side .ops-list { max-height: 340px; }
 }
 
 .ops-hero { display: flex; flex-direction: column; gap: 12px; }
@@ -1374,19 +1416,39 @@ tr.is-clickable:hover { background: var(--bg-raised); }
 }
 .ops-hero-controls { display: flex; align-items: center; gap: 8px; }
 
+/* The video takes whatever height the row has left after the header and the
+   camera facts, never dropping below 16:9. The card is stretched to match the
+   column beside it, so pinning the stage to exactly 16:9 left ~160px of empty
+   card below the metadata — and the obvious use for spare space in a
+   surveillance view is a larger picture. */
 .ops-hero-stage {
   position: relative;
+  flex: 1;
+  min-height: 0;
   aspect-ratio: 16 / 9;
   background: #000;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   overflow: hidden;
 }
+@supports (height: 1lh) {
+  /* Where flex can resolve the height, let it win over the aspect ratio so the
+     stage can grow past 16:9 rather than being clamped to it. */
+  .ops-hero-stage { aspect-ratio: auto; min-height: max(320px, 42vh); }
+}
 
+/* Camera facts read as a caption to the video, so they sit on their own inset
+   surface rather than floating loose beneath it. Four columns held the labels
+   too close to be scanned and orphaned the address on a line of its own. */
 .ops-hero-meta {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
-  gap: 10px 16px;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 14px 20px;
+  padding: 13px 15px;
+  margin-top: 2px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
 }
 .ops-hero-meta span {
   display: block;
@@ -1394,9 +1456,18 @@ tr.is-clickable:hover { background: var(--bg-raised); }
   text-transform: uppercase; letter-spacing: 0.06em;
   color: var(--text-muted);
 }
-.ops-hero-meta strong { font-size: 12.5px; font-weight: 600; color: var(--text-primary); }
+.ops-hero-meta strong {
+  display: block;
+  margin-top: 3px;
+  font-size: 13px; font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.35;
+}
 
-.ops-side { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+/* .ops-side is laid out as a grid above, so the two panels divide the column's
+   height instead of each sizing to its own content. This rule only carries what
+   that one does not. */
+.ops-side { min-width: 0; }
 .ops-panel { display: flex; flex-direction: column; }
 
 .ops-count {
@@ -1606,3 +1677,45 @@ tr.is-clickable:hover { background: var(--bg-raised); }
         animation: none;
     }
 }
+
+/* ─── Dashboard refinements ────────────────────────────────────────────────── */
+
+/* The denominator in "18/30" is context, not the number being reported, so it
+   is set smaller and quieter than the figure it qualifies. */
+.stat-value-of {
+  font-size: 0.5em;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-left: 1px;
+  letter-spacing: 0;
+}
+
+/* How many times one watchlisted vehicle has been seen. Sits beside the plate
+   rather than in the metadata line, because it qualifies the registration. */
+.ops-item-count {
+  margin-left: 7px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  vertical-align: 1px;
+}
+
+/* A scroll shadow on the alert and recognition lists. Without it a list that
+   continues below the fold looks like a list that has ended, and the operator
+   never learns there is more. */
+.ops-side .ops-list {
+  background:
+    linear-gradient(var(--bg-card) 30%, transparent) top / 100% 24px no-repeat,
+    linear-gradient(transparent, var(--bg-card) 70%) bottom / 100% 24px no-repeat,
+    radial-gradient(farthest-side at 50% 0, rgba(0,0,0,0.35), transparent) top / 100% 10px no-repeat,
+    radial-gradient(farthest-side at 50% 100%, rgba(0,0,0,0.35), transparent) bottom / 100% 10px no-repeat;
+  background-attachment: local, local, scroll, scroll;
+}
+
+@media (max-width: 1100px) { .status-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 700px)  { .status-grid { grid-template-columns: minmax(0, 1fr); } }
