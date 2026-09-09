@@ -1414,7 +1414,29 @@ tr.is-clickable:hover { background: var(--bg-raised); }
   gap: 12px;
   flex-wrap: wrap;
 }
-.ops-hero-controls { display: flex; align-items: center; gap: 8px; }
+/* The title must not be squeezed; the controls take what is left. */
+.ops-hero-head > .card-title { flex: 0 0 auto; }
+
+/* The camera select sizes itself to its longest option — "12 Tri Mandir Adalaj
+   Tollnaka — Municipal Corporation" is wide — and a flex item will not shrink
+   below its intrinsic width unless told to. Below about 1500px that pushed the
+   Wall button past the edge of the card. min-width: 0 lets the select give way,
+   and the ellipsis keeps the truncation legible rather than clipped. */
+.ops-hero-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 auto;
+  min-width: 0;
+  justify-content: flex-end;
+}
+.ops-hero-controls select {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 340px;
+  text-overflow: ellipsis;
+}
+.ops-hero-controls .btn { flex: 0 0 auto; }
 
 /* The video takes whatever height the row has left after the header and the
    camera facts, never dropping below 16:9. The card is stretched to match the
