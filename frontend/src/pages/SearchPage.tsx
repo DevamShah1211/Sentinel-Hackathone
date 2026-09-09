@@ -186,7 +186,13 @@ export default function SearchPage() {
                 actor: 'operator', purpose: purpose || 'investigation',
                 case_ref: caseRef || undefined,
             })
-            setResults(data)
+            // Oldest first. The API returns rows in whatever order the query
+            // produced, which put a vehicle's 11:59 sighting between its 10:19
+            // and 10:31 ones — so a list that is read as a movement history
+            // told the wrong story. Chronological is the only ordering that
+            // makes a sequence of sightings mean anything.
+            setResults([...data].sort((a, b) =>
+                new Date(a.detected_at).getTime() - new Date(b.detected_at).getTime()))
         } finally { setLoading(false) }
     }, [query, fuzzy, purpose, caseRef])
 
@@ -422,13 +428,19 @@ export default function SearchPage() {
                         </div>
                     )}
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                        {results.map(det => (
+                        {results.map((det, i) => (
                             <div
                                 key={det.id}
                                 className="detection-card is-clickable"
                                 title="Open full vehicle detail"
                                 onClick={() => setDetailPlate(det.plate_text)}
                             >
+                                {/* Position in the sequence. With the rows in
+                                    time order this turns a list of sightings
+                                    into a journey the eye can follow, and makes
+                                    the ordering visible rather than something
+                                    the reader has to infer from timestamps. */}
+                                <span className="detection-seq" aria-hidden="true">{i + 1}</span>
                                 {det.crop_uri
                                     ? <img src={det.crop_uri} alt="plate crop" className="detection-crop" />
                                     : <div className="detection-crop-placeholder">No crop</div>

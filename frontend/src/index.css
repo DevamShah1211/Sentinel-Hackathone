@@ -514,11 +514,33 @@ tr:last-child td { border-bottom: none; }
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  padding: 14px;
+  padding: 12px 14px;
   display: flex;
   gap: 14px;
-  align-items: flex-start;
+  align-items: center;
   transition: border-color 0.15s;
+}
+
+/* Position in a time-ordered list of sightings. Quiet by default — it is an
+   index, not a value — and it earns its place by making the ordering legible
+   at a glance instead of asking the reader to compare timestamps. */
+.detection-seq {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+.detection-card:hover .detection-seq {
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .detection-card:hover { border-color: var(--accent); }
