@@ -670,6 +670,24 @@ gateway.
            clips travel upstream
 ```
 
+**What that saves, measured.** A 1080p camera backhauls 2.02 GB/hour of video. A
+busy one backhauls 47.7 KB/hour of metadata — the detection and scene-count
+payloads, sized from the exact JSON the workers post. That is **42,000× less**,
+and the ratio improves on quieter cameras, which is the right direction: the
+streams that cost most to carry raw are the ones with least to say.
+
+At 80,000 cameras the difference is the whole argument:
+
+| | Sustained backhaul |
+|---|---|
+| Every stream to the core | **360 Gbps** (162 TB/hour) |
+| Metadata only | **8.7 Mbps** (3.9 GB/hour) |
+
+360 Gbps of sustained inbound is a core-network build. 8.7 Mbps is one office
+connection. Working is in MEASUREMENTS §4, including what the figures exclude —
+live viewing scales with operators rather than cameras, and is planned
+separately.
+
 Edge nodes record and analyse locally; only metadata, alerts and specifically
 requested clips traverse the backbone. This reduces the wide-area requirement by
 **two to three orders of magnitude**, because a plate read is a few hundred bytes

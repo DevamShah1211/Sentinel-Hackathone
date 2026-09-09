@@ -679,3 +679,60 @@ Within a bucket the figure kept per class is the **peak in any single frame**,
 not the sum across frames. Summing counts a parked car once per frame — sixty
 times a minute — producing a number that grows with sampling rate rather than
 with traffic. Peak answers the question a junction count is actually asking.
+
+## 4. Bandwidth — what edge processing actually saves
+
+The scale-out design in HLD §9.2 keeps inference at the district edge and
+backhauls only metadata. That is a common claim; this section puts a measured
+number on it, because the difference decides whether a statewide deployment is a
+networking problem or not.
+
+### 4a. Measured inputs
+
+| Quantity | Value | How |
+|---|---|---|
+| Captured sandbox video | 1280×720, 25 fps, **2.82 Mbps** | Measured on the 26.4 s clip in `sample_feeds/` |
+| Typical 1080p CCTV | ~4.5 Mbps | Standard H.264 constant-quality figure for this class of camera |
+| One detection payload | **277 bytes** | The exact JSON body `anpr_worker.py` posts |
+| One scene bucket | **260 bytes** | The exact JSON body `tools/scene_analytics.py` posts |
+
+### 4b. Per camera, per hour
+
+| | Raw video | Metadata |
+|---|---|---|
+| 720p @ 2.82 Mbps | 1.27 GB/h | — |
+| 1080p @ 4.5 Mbps | **2.02 GB/h** | — |
+| Busy junction — 120 plates/h + 60 buckets | — | **47.7 KB/h** |
+| Quiet street — 20 plates/h + 60 buckets | — | **20.6 KB/h** |
+
+**A busy camera backhauls about 42,000× less than its own video.** A quiet one,
+96,000× less. The ratio improves as the scene gets quieter, which is the right
+direction: the cameras that cost the most to backhaul raw are the ones with
+least to say.
+
+### 4c. At 80,000 cameras
+
+| Approach | Sustained backhaul |
+|---|---|
+| Centralised — every stream to the core | **360 Gbps** (162 TB/hour) |
+| Edge-first — metadata only | **8.7 Mbps** (3.9 GB/hour) |
+
+360 Gbps of sustained inbound is a core-network build, not a software
+deployment. 8.7 Mbps is a single office connection. That is the entire argument
+for edge-first in one comparison, and it is why HLD §9.2 puts inference in the
+district rather than the state data centre.
+
+### 4d. What this does not include
+
+Stated so the figures are not read as more than they are:
+
+- **Live viewing is separate.** An operator watching nine tiles pulls those nine
+  streams, and that traffic is real. It is bounded by how many operators are
+  watching, not by camera count — which is precisely why it scales differently
+  from analytics and is planned separately.
+- **Evidence crops are not counted above.** A crop is ~15 KB and is written to
+  district storage, not backhauled. Only its URI travels, and that URI is in the
+  277 bytes.
+- **Recorded retention is a storage problem, not a bandwidth one.** Footage kept
+  for evidentiary purposes stays where it was recorded until something asks for
+  it; §9.3 covers the tiering.
