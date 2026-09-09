@@ -112,16 +112,31 @@ class VahanSettings:
 
 # ─── Mock implementation ──────────────────────────────────────────────────────
 
-_MAKER_MODELS = (
-    ("Maruti Suzuki", "Swift VXi"), ("Hyundai", "Creta SX"), ("Tata Motors", "Nexon XZ+"),
-    ("Mahindra", "Bolero B6"), ("Honda", "City ZX"), ("Toyota", "Innova Crysta"),
-    ("Bajaj Auto", "Pulsar 150"), ("Hero MotoCorp", "Splendor Plus"),
-    ("Ashok Leyland", "Dost+"), ("Eicher", "Pro 2049"),
+# Make, model, class and fuel are chosen together, not independently.
+#
+# They used to be drawn from separate hash bytes, which produced records like
+# "Eicher Pro 2049 · Light Goods Vehicle · Petrol" — a 4.9-tonne truck in the
+# wrong class burning the wrong fuel. Nobody who knows Indian vehicles would
+# read that as a real registry record, and a mock whose internal contradictions
+# are visible undermines the parts of the system that are real.
+#
+# The fuels listed per entry are the ones actually sold for that model.
+_VEHICLE_TYPES = (
+    # (maker, model, class, plausible fuels)
+    ("Maruti Suzuki", "Swift VXi", "Motor Car (LMV)", ("Petrol", "Petrol/CNG")),
+    ("Hyundai", "Creta SX", "Motor Car (LMV)", ("Petrol", "Diesel")),
+    ("Tata Motors", "Nexon XZ+", "Motor Car (LMV)", ("Petrol", "Diesel", "Electric")),
+    ("Mahindra", "Bolero B6", "Motor Car (LMV)", ("Diesel",)),
+    ("Honda", "City ZX", "Motor Car (LMV)", ("Petrol",)),
+    ("Toyota", "Innova Crysta", "Motor Car (LMV)", ("Diesel", "Petrol")),
+    ("Bajaj Auto", "Pulsar 150", "Motorcycle", ("Petrol",)),
+    ("Hero MotoCorp", "Splendor Plus", "Motorcycle", ("Petrol",)),
+    ("Ashok Leyland", "Dost+", "Light Goods Vehicle", ("Diesel", "Petrol/CNG")),
+    ("Eicher", "Pro 2049", "Goods Carrier (HGV)", ("Diesel",)),
+    ("Tata Motors", "Ace Gold", "Light Goods Vehicle", ("Diesel", "Petrol/CNG")),
+    ("Force Motors", "Traveller 3350", "Omni Bus", ("Diesel",)),
 )
 _COLOURS = ("White", "Silver", "Grey", "Black", "Blue", "Red", "Brown", "Maroon")
-_FUELS = ("Petrol", "Diesel", "CNG", "Electric", "Petrol/CNG")
-_CLASSES = ("Motor Car (LMV)", "Motorcycle", "Goods Carrier (HGV)",
-            "Light Goods Vehicle", "Omni Bus")
 
 # Gujarat RTO codes mapped to their registering authority.
 _RTO_AUTHORITIES = {
@@ -167,7 +182,7 @@ class MockVahanClient:
             raise VehicleNotFound(f"'{registration_number}' is not a valid registration number")
 
         seed = self._digest(plate)
-        maker, model = _MAKER_MODELS[seed[0] % len(_MAKER_MODELS)]
+        maker, model, vehicle_class, fuels = _VEHICLE_TYPES[seed[0] % len(_VEHICLE_TYPES)]
         rto_code = plate[2:4] if plate[2:4].isdigit() else "01"
 
         registration_year = 2008 + (seed[3] % 18)
@@ -182,9 +197,9 @@ class MockVahanClient:
             registration_number=plate,
             owner_name=(f"{_OWNER_FIRST[seed[1] % len(_OWNER_FIRST)]} "
                         f"{_OWNER_LAST[seed[2] % len(_OWNER_LAST)]}"),
-            vehicle_class=_CLASSES[seed[6] % len(_CLASSES)],
+            vehicle_class=vehicle_class,
             maker_model=f"{maker} {model}",
-            fuel_type=_FUELS[seed[7] % len(_FUELS)],
+            fuel_type=fuels[seed[7] % len(fuels)],
             colour=_COLOURS[seed[8] % len(_COLOURS)],
             registration_date=registered,
             registering_authority=_RTO_AUTHORITIES.get(rto_code, f"RTO {rto_code}"),

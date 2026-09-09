@@ -743,6 +743,103 @@ scatter-gather and degrade with shard count. Each needs load-testing before any
 statewide commitment, and a benchmark of 200 streams with a transparent projection
 is worth more than an unsupported claim of 80,000.
 
+### 9.6 Load balancing and horizontal scaling
+
+Every tier scales out rather than up, because the unit of work is naturally
+divisible: a camera is independent of every other camera.
+
+| Tier | Unit of scale | How work is distributed |
+|---|---|---|
+| Edge inference | One district node per ~26 tiled streams (measured, §9.4) | Cameras are assigned to nodes by district; a node owns its cameras outright, so there is no cross-node coordination on the hot path |
+| API | Stateless FastAPI processes behind NGINX | Round-robin; any process can serve any request because session state lives in the JWT, not in memory |
+| Metadata store | PostgreSQL primary with read replicas | Writes to the primary; plate search, route reconstruction and analytics — all read-only — go to replicas |
+| Object storage | S3-compatible, sharded by camera and date | Already horizontal by construction |
+
+**Why the edge tier is the one that matters.** Adding API processes is trivial and
+adding replicas is routine; neither is the constraint. The constraint is inference
+capacity, and it is fixed by the measurement in §9.4: 26 tiled streams per 20-core
+machine. Scaling analytics means adding district nodes, and the arithmetic in §9.2a
+is what that costs.
+
+**What does not scale horizontally, stated plainly.** A single PostgreSQL primary
+accepts all writes. At 80,000 cameras with continuous ANPR that is the first thing
+to break, and the answer is partitioning `detections` by district and month, which
+is a schema migration rather than a configuration change. We have not done it,
+because at 30 cameras it would be unjustified complexity, and §9.3 gives the camera
+count at which it stops being optional.
+
+### 9.7 Monitoring, logging and health checks
+
+The platform already reports on itself; what a statewide deployment adds is
+aggregation and alerting, not new instrumentation.
+
+**What exists and is demonstrable today.** `GET /api/v1/cameras/health-status`
+reports per-camera reachability, and it is the query behind the dashboard's
+System Status panel. The ANPR worker keeps per-camera counters — frames read,
+frames decodable, inference seconds, reconnects, tracks emitted, detections
+posted, post failures, reads rejected for low confidence, invalid format, or
+below-resolution — and logs them per stream. Every request carries a correlation
+id through the middleware, so one operator action can be traced across services.
+Every search, route reconstruction and export is written to the audit trail with
+actor, purpose and case reference.
+
+**What a statewide deployment adds.** Prometheus scraping the counters the worker
+already keeps; per-district Grafana boards; alerting on the four conditions that
+actually indicate failure rather than noise:
+
+| Condition | Why it is the right signal |
+|---|---|
+| Camera unreachable > 15 min | Distinguishes a real outage from the reconnect backoff, which tops out at 30 s |
+| Decodable-frame ratio < 60% on a camera | The stream is up but the video is corrupt — the failure mode §2 of MEASUREMENTS documents, which no reachability check catches |
+| Zero detections for 24 h on a camera that previously produced them | Either the camera moved or the analytics stopped; both need a human |
+| Detection POST failure rate > 1% | The index is silently losing evidence, which is the worst failure in the system because nothing downstream looks wrong |
+
+The third and fourth are the ones worth arguing for. A camera that is reachable
+and returning frames still contributes nothing if it has been repointed at a wall,
+and a worker that reads plates but cannot post them looks healthy from every angle
+except the one that matters.
+
+### 9.8 High availability, backup and disaster recovery
+
+Stated as targets with the reasoning, not as claims about running code. Nothing in
+this subsection is demonstrated by the prototype.
+
+| Concern | Target | Approach |
+|---|---|---|
+| API availability | 99.5% | Stateless processes across at least two hosts behind a load balancer; losing one host costs capacity, not service |
+| Database | RPO 5 min, RTO 30 min | Streaming replication to a standby in a second data centre; promotion is manual, because an automatic failover that flaps is worse than a supervised one |
+| Evidence crops | RPO 24 h | Nightly sync to cold storage; a lost crop weakens a case but does not stop the platform |
+| Edge nodes | Degraded, not down | A district node failing stops analytics for its cameras only. Live viewing is unaffected, because it does not pass through the analytics path |
+| Retention | 90 days hot, 1 year warm, 7 years cold | Per §9.3; the cold tier exists for evidentiary retention rather than for operations |
+
+**The recovery case worth designing for is not total loss.** It is a district node
+that has been down for six hours while its cameras kept recording. The queue-based
+publisher in the worker already sheds oldest-first rather than growing without
+bound, which is the right behaviour for live indexing and the wrong one for
+backfill — so a recovering node needs a replay path that reads from the NVR rather
+than the live stream. That is designed and not built, and it is listed in §12.
+
+### 9.9 Phased rollout
+
+Four phases, each with an exit criterion that must be met before the next begins.
+The criteria matter more than the schedule: every phase is designed to fail cheaply
+if the assumption behind it is wrong.
+
+| Phase | Scope | Exit criterion |
+|---|---|---|
+| **1. Pilot** | One district, 50-200 cameras, one department | ANPR accuracy measured against manually labelled ground truth on *these* cameras — not on ours. The measurement in §6.5 and MEASUREMENTS §2g says this is where the programme learns whether its existing cameras can support ANPR at all |
+| **2. City** | One city, 2,000-5,000 cameras, three or more departments | Cross-department onboarding works without touching departmental VMS; the first real multi-vendor adapter is written and tested |
+| **3. Regional** | Four to six districts, ~20,000 cameras | Edge topology proven: district nodes, regional aggregation, metadata-only backhaul. Load-tested, not projected |
+| **4. Statewide** | ~80,000 cameras | Rolled out district by district against the phase-3 template |
+
+**Phase 1 is the phase that decides the programme.** Our sweep of all thirty
+sandbox cameras returned no correct plate at any of them, and the limit was optics
+and siting rather than software (MEASUREMENTS §2g). If that holds across a real
+district, the useful output of phase 1 is a procurement specification — pixels per
+character at the enforcement line — not a software rollout. A programme that
+discovers this at phase 4 has spent the budget; one that discovers it at phase 1
+has spent a pilot.
+
 ---
 
 ## 10. Integration with VAHAN, SARTHI, eGujCop and NAFIS

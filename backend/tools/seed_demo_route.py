@@ -94,12 +94,24 @@ JOURNEYS = [
             ("cam14", 5),    # Delight RLVD        2.0 km road   23 km/h
             ("cam04", 17),   # Paldi Circle        6.3 km        32 km/h
             ("cam13", 26),   # C N Vidyalaya       4.0 km        27 km/h
-            # Rajkot, 263 km by road, 79 minutes later: 200 km/h implied.
-            # Chosen deliberately. Fast enough to be impossible on the
-            # Ahmedabad-Rajkot highway, close enough to plausible that it reads
-            # as a cloned plate rather than a data error — which is the case an
-            # investigator actually meets. A jury can check the arithmetic.
-            ("cam17", 105),
+            # Rajkot, 263 km away by road, 30 minutes after the Ahmedabad
+            # sighting. That implies roughly 400 km/h, which nothing on an
+            # Indian highway can do.
+            #
+            # An earlier version used a 79-minute gap for about 200 km/h, on the
+            # theory that a near-miss reads as more realistic than an absurdity.
+            # That was wrong twice over. The vehicle behind this plate is a
+            # light goods vehicle, which cannot sustain 150 km/h let alone 200,
+            # so the figure invited the reader to doubt the data rather than the
+            # plate. And the real drive is 3.3 to 4.4 hours at legal speeds, so
+            # a 79-minute gap sat in the band where a reader has to do
+            # arithmetic to decide whether the flag is right.
+            #
+            # A cloned registration should be obvious on sight. Half an hour
+            # between Ahmedabad and Rajkot is not a fast car; it is two vehicles
+            # wearing the same plate, and that is the conclusion the operator
+            # should reach without checking anything.
+            ("cam17", 56),
         ],
     },
     {
