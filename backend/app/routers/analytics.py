@@ -16,6 +16,7 @@ from app import audit
 from app.database import get_db
 from app.security import (
     CurrentPrincipal, Principal, RequireOperator, RequireStateAdmin,
+    RequireViewer,
 )
 from app.models import Alert, AuditLog, Camera, Detection, WatchlistEntry
 from app.gap_analysis import build_gap_report
@@ -28,7 +29,8 @@ router = APIRouter()
 
 
 @router.get("/summary", summary="Platform-wide dashboard summary")
-async def summary(db: AsyncSession = Depends(get_db)):
+async def summary(db: AsyncSession = Depends(get_db),
+                  principal: Principal = RequireViewer):
     # Camera stats
     cam_total = await db.scalar(select(func.count(Camera.id)))
     cam_live  = await db.scalar(select(func.count(Camera.id)).where(Camera.is_live == True))
@@ -65,7 +67,9 @@ async def summary(db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/top-plates", summary="Most frequently detected plates")
-async def top_plates(db: AsyncSession = Depends(get_db), limit: int = 20):
+async def top_plates(db: AsyncSession = Depends(get_db),
+                     limit: int = Query(20, le=200),
+                     principal: Principal = RequireOperator):
     result = await db.execute(
         select(Detection.plate_text, func.count(Detection.id).label("count"))
         .group_by(Detection.plate_text)
@@ -76,7 +80,8 @@ async def top_plates(db: AsyncSession = Depends(get_db), limit: int = 20):
 
 
 @router.get("/detections-by-hour", summary="Detections per camera per hour (last 24h)")
-async def detections_by_hour(db: AsyncSession = Depends(get_db)):
+async def detections_by_hour(db: AsyncSession = Depends(get_db),
+                             principal: Principal = RequireViewer):
     since = datetime.now(timezone.utc) - timedelta(hours=24)
     result = await db.execute(
         select(
@@ -303,7 +308,8 @@ async def vehicle_lookup(
 # ─── Gap analysis — Model 1 deliverable ──────────────────────────────────────
 
 @router.get("/gap-report", summary="Coverage gap and ageing-infrastructure analysis")
-async def gap_report(db: AsyncSession = Depends(get_db)):
+async def gap_report(db: AsyncSession = Depends(get_db),
+                     principal: Principal = RequireOperator):
     """
     Where the estate is thin, and which cameras need attention.
 

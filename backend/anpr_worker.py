@@ -36,6 +36,8 @@ from pathlib import Path
 import cv2
 import requests
 
+from urllib.parse import quote
+
 from app.plate_grammar import correct_plate, plausible_in_gujarat
 from app.settings import settings
 from app.vision import (MIN_ALERTABLE_PX_PER_CHAR, PlateDetector, StreamCapture,
@@ -50,6 +52,34 @@ EVIDENCE_DIR = Path(settings.evidence_crop_dir)
 # every frame buys nothing but CPU — and CPU is the constraint that decides how
 # many cameras one machine can carry.
 DEFAULT_FRAME_STRIDE = 5
+
+# Issued by POST /api/v1/auth/login. The stream endpoint requires state-admin
+# authority, because it is the route that knows which cameras exist and where
+# their feeds live.
+WORKER_TOKEN = os.getenv("SENTINEL_WORKER_TOKEN", "")
+
+
+def _with_credentials(url: str | None) -> str | None:
+    """
+    Put the sandbox credential back into a stripped stream URL.
+
+    The API returns `rtsp://host:port/stream/cam01`; ffmpeg needs
+    `rtsp://user:password@host:port/stream/cam01`. Reading the password from
+    local settings rather than receiving it over the wire is the whole point of
+    the split, so this is where the two halves meet.
+    """
+    if not url or "://" not in url:
+        return url
+    email = settings.sentinel_user_email
+    password = settings.sentinel_user_password
+    if not email or not password:
+        return url
+    scheme, _, rest = url.partition("://")
+    if "@" in rest.partition("/")[0]:
+        return url          # already carries credentials; leave it alone
+    auth = f"{quote(email, safe='')}:{quote(password, safe='')}@"
+    return f"{scheme}://{auth}{rest}"
+
 
 # A track must clear this before it is written to the index. Tuned so that a
 # genuine vehicle pass survives while single-frame phantom reads do not.
@@ -85,6 +115,10 @@ class DetectionPublisher:
         self.api_base = api_base
         self.queue: queue.Queue[dict | None] = queue.Queue(maxsize=max_queue)
         self.session = requests.Session()
+        # The ingest route is authenticated: the detection index is evidence,
+        # so writing to it requires an identity.
+        if WORKER_TOKEN:
+            self.session.headers["Authorization"] = f"Bearer {WORKER_TOKEN}"
         self.posted = 0
         self.failed = 0
         self.dropped = 0
@@ -119,7 +153,14 @@ class DetectionPublisher:
                                    payload["plate_text"], payload.get("camera_native_id", ""))
             except requests.RequestException as exc:
                 self.failed += 1
-                logger.debug("Detection POST failed: %s", exc)
+                status = getattr(exc.response, "status_code", None)
+                if status in (401, 403):
+                    # Worth shouting about: without this the worker runs, reads
+                    # plates, and silently indexes nothing.
+                    logger.error("API rejected the detection (%s). Set "
+                                 "SENTINEL_WORKER_TOKEN to an operator token.", status)
+                else:
+                    logger.debug("Detection POST failed: %s", exc)
 
     def close(self, timeout: float = 10.0) -> None:
         deadline = time.time() + timeout
@@ -278,19 +319,38 @@ def fetch_cameras(limit: int, only: list[str] | None = None) -> list[dict]:
     """
     Ask the API which cameras to index.
 
-    Uses the internal stream endpoint rather than `GET /cameras`: the public route
-    serves browsers and deliberately withholds the credential-bearing RTSP URLs
-    that inference needs.
+    Uses the internal stream endpoint rather than `GET /cameras`, which serves
+    browsers and carries no stream URLs at all.
+
+    The endpoint returns URLs with the credential stripped, and this function
+    puts it back from local configuration. That split is deliberate: the
+    password never travels over HTTP, and the worker already holds it, so
+    sending it would have been gratuitous. It also means a leak of this
+    response — a proxy log, an error report, a screenshot — discloses hostnames
+    rather than credentials.
     """
+    headers = {}
+    if WORKER_TOKEN:
+        headers["Authorization"] = f"Bearer {WORKER_TOKEN}"
     try:
         response = requests.get(f"{API_BASE}/cameras/internal/streams",
-                                params={"limit": 200, "live_only": True}, timeout=20)
+                                params={"limit": 200, "live_only": True},
+                                headers=headers, timeout=20)
+        if response.status_code in (401, 403):
+            logger.error(
+                "The API rejected this worker (%s). The stream endpoint now "
+                "requires a state-admin token: set SENTINEL_WORKER_TOKEN to one "
+                "issued by POST /api/v1/auth/login.", response.status_code)
+            return []
         response.raise_for_status()
         cameras = response.json()
     except requests.RequestException as exc:
         logger.error("Could not reach the API at %s (%s). Start it with: python run_server.py",
                      API_BASE, exc)
         return []
+
+    for cam in cameras:
+        cam["rtsp_url"] = _with_credentials(cam.get("rtsp_url"))
 
     if only:
         wanted = {c.lower() for c in only}

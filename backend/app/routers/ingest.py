@@ -27,6 +27,7 @@ from app.geocoding import (
     resolve_location,
 )
 from app.models import Camera
+from app.security import Principal, RequireStateAdmin
 from app.sandbox_client import fetch_catalogue
 from app.settings import settings
 
@@ -157,23 +158,37 @@ async def sync_catalogue_on_startup() -> None:
 
 @router.post("/sync", summary="Re-sync the camera registry from the sandbox catalogue")
 async def sync_catalogue(background_tasks: BackgroundTasks,
+                         principal: Principal = RequireStateAdmin,
                          geocode: bool = Query(True, description="Resolve missing locations via Nominatim")):
+    if _sync_running.locked():
+        return {"message": "A catalogue sync is already running.",
+                "geocoding_enabled": geocode, "started": False}
     background_tasks.add_task(_sync_task, geocode)
     return {"message": "Catalogue sync started in the background.",
-            "geocoding_enabled": geocode}
+            "geocoding_enabled": geocode, "started": True}
+
+
+# One sync at a time. Each run logs into the sandbox and, with geocoding on,
+# issues a rate-limited Nominatim lookup per camera — so repeated calls used to
+# stack unbounded background tasks, exhausting the process and risking the
+# platform's sandbox account and geocoder access being blocked.
+_sync_running = asyncio.Lock()
 
 
 async def _sync_task(geocode: bool = True) -> None:
-    cameras_data = await fetch_catalogue()
-    if not cameras_data:
-        logger.warning("Manual sync: catalogue unreachable")
+    if _sync_running.locked():
         return
-    async with AsyncSessionLocal() as db:
-        await upsert_cameras(cameras_data, db, use_network=geocode)
+    async with _sync_running:
+        cameras_data = await fetch_catalogue()
+        if not cameras_data:
+            logger.warning("Manual sync: catalogue unreachable")
+            return
+        async with AsyncSessionLocal() as db:
+            await upsert_cameras(cameras_data, db, use_network=geocode)
 
 
 @router.get("/catalogue", summary="Raw catalogue as published by the sandbox")
-async def get_raw_catalogue():
+async def get_raw_catalogue(principal: Principal = RequireStateAdmin):
     data = await fetch_catalogue()
     return {"count": len(data), "cameras": data}
 

@@ -35,11 +35,28 @@ async def lifespan(app: FastAPI):
     logger.info("🚀 Starting Sentinel CCTV Platform…")
     await init_db()
     await auth.seed_demo_users()
+
+    # A weak signing key is not a warning-level problem: anyone who guesses it
+    # mints a state-admin token, because the role is read from the token's own
+    # claims. Refuse to serve authenticated traffic with a default or short key
+    # rather than starting and hoping nobody tries.
+    weak = (settings.secret_key == "change-me-in-production"
+            or len(settings.secret_key) < 32)
+    if settings.auth_enabled and weak:
+        raise RuntimeError(
+            "SECRET_KEY is the default or shorter than 32 characters, and "
+            "AUTH_ENABLED is true. Forging a token against a key like this is "
+            "cheap, and a forged token is a state administrator. Generate one "
+            "with:  python -c \"import secrets; print(secrets.token_urlsafe(64))\""
+        )
     if not settings.auth_enabled:
         logger.warning(
-            "AUTH_ENABLED is false — API routes are open. Set AUTH_ENABLED=true "
-            "before exposing this instance."
+            "AUTH_ENABLED is false — every request is treated as state admin, "
+            "including watchlist writes and the audit trail. This is for local "
+            "demonstration only; never expose this instance."
         )
+    elif weak:
+        logger.warning("SECRET_KEY is weak. Rotate it before deployment.")
     # Authenticate the stream proxy now so the first video tile does not wait on
     # a login round-trip.
     asyncio.create_task(cameras.warm_hls_session())

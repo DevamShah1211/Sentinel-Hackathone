@@ -9,13 +9,15 @@ from datetime import datetime, timezone
 from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, Query
+from fastapi import (APIRouter, Depends, File, HTTPException, Query, UploadFile,
+                     status)
 from pydantic import BaseModel
 from sqlalchemy import func, select, or_, text, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models import Alert, Detection, WatchlistEntry
+from app.security import Principal, RequireOperator, RequireStateAdmin
 from app.websocket_manager import ws_manager
 
 logger = logging.getLogger("sentinel.watchlist")
@@ -124,9 +126,17 @@ async def check_and_alert(detection: Detection, db: AsyncSession) -> bool:
 
 # ─── Router endpoints ─────────────────────────────────────────────────────────
 
+# Bounds on CSV import. A watchlist is operationally a few thousand plates at
+# most; anything larger is a mistake or an attack, and both are better refused
+# than absorbed.
+MAX_IMPORT_BYTES = 2 * 1024 * 1024      # 2 MB
+MAX_IMPORT_ROWS = 20_000
+
+
 @router.get("", response_model=list[WatchlistOut], summary="List watchlist entries")
 async def list_watchlist(
     db: AsyncSession = Depends(get_db),
+    principal: Principal = RequireOperator,
     active_only: bool = Query(True),
     limit: int = 200,
 ):
@@ -138,7 +148,8 @@ async def list_watchlist(
 
 
 @router.post("", response_model=WatchlistOut, summary="Add a plate to the watchlist")
-async def add_to_watchlist(body: WatchlistCreate, db: AsyncSession = Depends(get_db)):
+async def add_to_watchlist(body: WatchlistCreate, db: AsyncSession = Depends(get_db),
+                           principal: Principal = RequireOperator):
     entry = WatchlistEntry(**body.model_dump())
     entry.plate_text = entry.plate_text.upper().strip()
     db.add(entry)
@@ -148,7 +159,8 @@ async def add_to_watchlist(body: WatchlistCreate, db: AsyncSession = Depends(get
 
 
 @router.delete("/{entry_id}", summary="Deactivate a watchlist entry")
-async def remove_from_watchlist(entry_id: UUID, db: AsyncSession = Depends(get_db)):
+async def remove_from_watchlist(entry_id: UUID, db: AsyncSession = Depends(get_db),
+                                principal: Principal = RequireStateAdmin):
     result = await db.execute(select(WatchlistEntry).where(WatchlistEntry.id == entry_id))
     entry = result.scalar_one_or_none()
     if not entry:
@@ -162,14 +174,28 @@ async def remove_from_watchlist(entry_id: UUID, db: AsyncSession = Depends(get_d
 async def bulk_import(
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
-    added_by: str = "bulk-import",
+    principal: Principal = RequireOperator,
 ):
-    content = await file.read()
+    # Read with a ceiling rather than swallowing the whole upload. `await
+    # file.read()` with no bound loads an arbitrary file into memory and then
+    # builds an ORM object per row before committing, so a large upload took the
+    # process down — and this route used to be reachable without authenticating.
+    content = await file.read(MAX_IMPORT_BYTES + 1)
+    if len(content) > MAX_IMPORT_BYTES:
+        raise HTTPException(
+            status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            f"CSV exceeds the {MAX_IMPORT_BYTES // 1024}KB limit.")
+    # Attribution comes from the authenticated caller, never from a parameter
+    # the caller chooses.
+    added_by = principal.email
     text_content = content.decode("utf-8", errors="replace")
     reader = csv.DictReader(io.StringIO(text_content))
     created = 0
     errors = []
     for i, row in enumerate(reader):
+        if created >= MAX_IMPORT_ROWS:
+            errors.append(f"stopped at {MAX_IMPORT_ROWS} rows; split the file")
+            break
         plate = row.get("plate") or row.get("plate_text") or row.get("Plate")
         if not plate:
             errors.append(f"Row {i+2}: missing plate")

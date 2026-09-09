@@ -1,13 +1,33 @@
-import { useCallback, useEffect, useState } from 'react'
+import { Suspense, lazy, useCallback, useEffect, useState } from 'react'
 import { BrowserRouter, NavLink, Route, Routes, useLocation } from 'react-router-dom'
 import { BarChart2, Bell, LogOut, Map, Monitor, Search, Shield } from 'lucide-react'
-import MapPage from './pages/MapPage'
-import VideoWallPage from './pages/VideoWallPage'
-import SearchPage from './pages/SearchPage'
-import AlertsPage from './pages/AlertsPage'
-import WatchlistPage from './pages/WatchlistPage'
-import DashboardPage from './pages/DashboardPage'
 import LoginPage from './pages/LoginPage'
+
+// Routes are split so the first paint does not wait on every page's
+// dependencies. Leaflet and Recharts are the expensive ones — the map's tile
+// engine and the charting library together dominated the bundle, and an
+// operator opening the alerts page was downloading both before anything
+// rendered. Each page now arrives when it is first visited.
+//
+// LoginPage is deliberately NOT lazy: it is the first thing an unauthenticated
+// user sees, so splitting it would add a network round trip to the one screen
+// that must appear instantly.
+const DashboardPage = lazy(() => import('./pages/DashboardPage'))
+const MapPage = lazy(() => import('./pages/MapPage'))
+const VideoWallPage = lazy(() => import('./pages/VideoWallPage'))
+const SearchPage = lazy(() => import('./pages/SearchPage'))
+const AlertsPage = lazy(() => import('./pages/AlertsPage'))
+const WatchlistPage = lazy(() => import('./pages/WatchlistPage'))
+
+// Prefetch the rest once the first page is interactive. The operator pays no
+// wait when they navigate, but the initial render was never blocked on it.
+function prefetchRoutes() {
+    void import('./pages/MapPage')
+    void import('./pages/VideoWallPage')
+    void import('./pages/SearchPage')
+    void import('./pages/AlertsPage')
+    void import('./pages/WatchlistPage')
+}
 import { useAlertWebSocket, type WsStatus } from './hooks/useAlertWebSocket'
 import Toast from './components/Toast'
 import { clearSession, getStoredUser, type AuthUser } from './api/client'
@@ -103,8 +123,46 @@ function Topbar({ status, user, onSignOut }: {
     )
 }
 
+/**
+ * Shown while a route chunk downloads.
+ *
+ * Deliberately quiet: a spinner that appears for 80ms reads as a flicker, which
+ * looks less responsive than a brief still moment. The skeleton holds the
+ * layout so the page does not jump when content arrives.
+ */
+function RouteFallback() {
+    return (
+        <div className="page-content" aria-busy="true" aria-live="polite">
+            <div className="route-skeleton">
+                <div className="skeleton-bar" style={{ width: '30%', height: 26 }} />
+                <div className="skeleton-grid">
+                    {Array.from({ length: 4 }, (_, i) => (
+                        <div key={i} className="skeleton-card" />
+                    ))}
+                </div>
+            </div>
+            <span className="sr-only">Loading…</span>
+        </div>
+    )
+}
+
 function Shell({ user, onSignOut }: { user: AuthUser | null; onSignOut: () => void }) {
     const { alerts, status, clearAlert } = useAlertWebSocket()
+
+    // Warm the other routes once this one has settled, so navigation is instant.
+    useEffect(() => {
+        const idle = (window as unknown as {
+            requestIdleCallback?: (cb: () => void) => number
+        }).requestIdleCallback
+        if (idle) {
+            const handle = idle(prefetchRoutes)
+            return () => (window as unknown as {
+                cancelIdleCallback?: (h: number) => void
+            }).cancelIdleCallback?.(handle)
+        }
+        const timer = setTimeout(prefetchRoutes, 2000)
+        return () => clearTimeout(timer)
+    }, [])
     const toasts = alerts.slice(0, 3)
 
     return (
@@ -112,14 +170,16 @@ function Shell({ user, onSignOut }: { user: AuthUser | null; onSignOut: () => vo
             <Sidebar newAlertCount={alerts.length} />
             <div className="main-area">
                 <Topbar status={status} user={user} onSignOut={onSignOut} />
-                <Routes>
-                    <Route path="/" element={<DashboardPage wsAlerts={alerts} />} />
-                    <Route path="/map" element={<MapPage />} />
-                    <Route path="/wall" element={<VideoWallPage />} />
-                    <Route path="/search" element={<SearchPage />} />
-                    <Route path="/alerts" element={<AlertsPage wsAlerts={alerts} />} />
-                    <Route path="/watchlist" element={<WatchlistPage />} />
-                </Routes>
+                <Suspense fallback={<RouteFallback />}>
+                    <Routes>
+                        <Route path="/" element={<DashboardPage wsAlerts={alerts} />} />
+                        <Route path="/map" element={<MapPage />} />
+                        <Route path="/wall" element={<VideoWallPage />} />
+                        <Route path="/search" element={<SearchPage />} />
+                        <Route path="/alerts" element={<AlertsPage wsAlerts={alerts} />} />
+                        <Route path="/watchlist" element={<WatchlistPage />} />
+                    </Routes>
+                </Suspense>
             </div>
 
             <div className="toast-container" aria-live="assertive" aria-relevant="additions">

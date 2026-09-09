@@ -15,6 +15,8 @@ from fastapi import Request, Response, status
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
+from app.settings import settings
+
 logger = logging.getLogger("sentinel.http")
 
 
@@ -107,11 +109,38 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
     @staticmethod
     def _client_key(request: Request) -> str:
-        # Behind a reverse proxy the real address is the first forwarded hop.
-        forwarded = request.headers.get("X-Forwarded-For")
-        if forwarded:
-            return forwarded.split(",")[0].strip()
-        return request.client.host if request.client else "unknown"
+        """
+        Identify the caller for rate-limiting purposes.
+
+        `X-Forwarded-For` is honoured only when the immediate peer is a trusted
+        proxy. It is a request header, so an untrusted client can set it to
+        anything: previously every request could carry a different value, each
+        getting its own fresh bucket, which made the ten-per-minute limit on
+        /auth/ unlimited in practice — precisely the endpoint the limit exists
+        to protect.
+
+        Configure TRUSTED_PROXIES with the addresses of real proxies in front of
+        this service; with none configured the socket address is always used,
+        which is correct for a directly-exposed deployment.
+        """
+        peer = request.client.host if request.client else "unknown"
+        if peer in settings.trusted_proxy_set:
+            forwarded = request.headers.get("X-Forwarded-For")
+            if forwarded:
+                return forwarded.split(",")[0].strip()
+        return peer
+
+    def _evict_stale(self, now: float) -> None:
+        """
+        Drop buckets that have fallen out of the window.
+
+        Without this the dictionary is keyed by client address and never
+        shrinks, so a stream of distinct addresses grows it without bound —
+        which was reachable remotely while forwarded headers were trusted.
+        """
+        cutoff = now - self.window
+        for key in [k for k, hits in self._hits.items() if not hits or hits[-1] < cutoff]:
+            del self._hits[key]
 
     def _bucket_for(self, path: str) -> tuple[str, int]:
         if path.startswith("/api/v1/auth/"):
@@ -128,6 +157,10 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         bucket, limit = self._bucket_for(path)
         key = (self._client_key(request), bucket)
         now = time.monotonic()
+
+        # Periodically clear buckets nobody is using any more.
+        if len(self._hits) > 4096:
+            self._evict_stale(now)
 
         hits = self._hits[key]
         cutoff = now - self.window

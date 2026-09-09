@@ -16,7 +16,7 @@ import httpx
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile
 from fastapi import status as http_status
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import func, select, and_, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -24,7 +24,8 @@ from app import audit
 from app.database import get_db
 from app.live_relay import relay_manager
 from app.models import Camera
-from app.security import Principal, RequireStateAdmin
+from app.security import (Principal, RequireOperator, RequireStateAdmin,
+                          RequireViewer)
 from app.settings import settings
 
 logger = logging.getLogger("sentinel.cameras")
@@ -60,6 +61,31 @@ class CameraOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+def _strip_credentials(url: str | None) -> str | None:
+    """
+    Remove any userinfo component from a stream URL.
+
+    `rtsp://user:password@host/path` becomes `rtsp://host/path`. Stream URLs are
+    persisted with credentials embedded so the worker can open them directly,
+    which means every response carrying one is a potential credential
+    disclosure. Stripping at the boundary is the reliable place to do it: it
+    cannot be forgotten by the next route that returns a camera, the way adding
+    a guard per route can be.
+    """
+    if not url or "@" not in url:
+        return url
+    scheme, _, rest = url.partition("://")
+    if not rest:
+        return url
+    # Only the first '@' before the first '/' delimits userinfo; an '@' later in
+    # the path is part of the path and must be left alone.
+    authority, slash, path = rest.partition("/")
+    if "@" not in authority:
+        return url
+    host = authority.rpartition("@")[2]
+    return f"{scheme}://{host}{slash}{path}"
 
 
 def serialise_camera(cam: Camera) -> dict:
@@ -123,6 +149,7 @@ class CameraCreate(BaseModel):
 @router.get("", response_model=list[CameraOut], summary="List all cameras (paginated)")
 async def list_cameras(
     db: AsyncSession = Depends(get_db),
+    principal: Principal = RequireViewer,
     department: Optional[str] = Query(None),
     status: Optional[str] = Query(None),
     codec: Optional[str] = Query(None),
@@ -147,6 +174,7 @@ async def list_cameras(
 @router.get("/geojson", summary="All cameras as GeoJSON FeatureCollection (for map)")
 async def cameras_geojson(
     db: AsyncSession = Depends(get_db),
+    principal: Principal = RequireViewer,
     department: Optional[str] = Query(None),
     live_only: bool = Query(False),
 ):
@@ -270,7 +298,8 @@ async def get_camera(camera_id: UUID, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("", response_model=CameraOut, summary="Create a camera record manually")
-async def create_camera(body: CameraCreate, db: AsyncSession = Depends(get_db)):
+async def create_camera(body: CameraCreate, db: AsyncSession = Depends(get_db),
+                        principal: Principal = RequireStateAdmin):
     cam = Camera(**body.model_dump())
     db.add(cam)
     await db.commit()
@@ -278,15 +307,48 @@ async def create_camera(body: CameraCreate, db: AsyncSession = Depends(get_db)):
     return serialise_camera(cam)
 
 
+class CameraUpdate(BaseModel):
+    """
+    The fields an administrator may change on a camera record.
+
+    Explicitly enumerated, and the stream URLs are deliberately absent. The
+    previous signature took an untyped `dict` and assigned any attribute the
+    model happened to have, which made every column writable — including
+    `rtsp_url`. Two things followed from that: the registry could be falsified
+    by moving a camera's coordinates, and, more seriously, an attacker could
+    repoint a camera at a host of their choosing and have the relay fetch it,
+    serving their video to operators as a live government feed and turning the
+    server into a request proxy for internal addresses.
+
+    Stream URLs come from the catalogue sync, which is the only thing that
+    should be setting them.
+    """
+    name: Optional[str] = None
+    department: Optional[str] = None
+    address: Optional[str] = None
+    district: Optional[str] = None
+    lat: Optional[float] = Field(None, ge=-90, le=90)
+    lon: Optional[float] = Field(None, ge=-180, le=180)
+    is_live: Optional[bool] = None
+    codec: Optional[str] = None
+    geo_source: Optional[str] = None
+    geo_confidence: Optional[float] = Field(None, ge=0, le=1)
+
+    model_config = {"extra": "forbid"}
+
+
 @router.patch("/{camera_id:uuid}", response_model=CameraOut, summary="Update a camera record")
-async def update_camera(camera_id: UUID, body: dict, db: AsyncSession = Depends(get_db)):
+async def update_camera(camera_id: UUID, body: CameraUpdate,
+                        db: AsyncSession = Depends(get_db),
+                        principal: Principal = RequireStateAdmin):
     result = await db.execute(select(Camera).where(Camera.id == camera_id))
     cam = result.scalar_one_or_none()
     if not cam:
         raise HTTPException(404, "Camera not found")
-    for k, v in body.items():
-        if hasattr(cam, k):
-            setattr(cam, k, v)
+    # exclude_unset so a field the caller did not mention is left alone rather
+    # than overwritten with None.
+    for k, v in body.model_dump(exclude_unset=True).items():
+        setattr(cam, k, v)
     await db.commit()
     await db.refresh(cam)
     return serialise_camera(cam)
@@ -486,20 +548,33 @@ def _rewrite_key_uri(tag_line: str, base: str) -> str:
 
 
 
-@router.get("/internal/streams", summary="Stream URLs for the ANPR worker (server-side only)")
+@router.get("/internal/streams", summary="Stream URLs for the ANPR worker (server-side only)",
+            include_in_schema=False)
 async def internal_stream_urls(
     db: AsyncSession = Depends(get_db),
     live_only: bool = Query(True),
     limit: int = Query(200, le=1000),
+    principal: Principal = RequireStateAdmin,
 ):
     """
-    Return the credential-bearing RTSP URLs the inference worker needs.
+    Return the stream URLs the inference worker needs.
 
-    This is deliberately separate from `GET /cameras`, which serves browsers and
-    must never disclose sandbox credentials. In a real deployment this route sits
-    behind service-to-service authentication and is not reachable from the
-    operator network; for the prototype it is documented as internal so the
-    distinction is explicit rather than accidental.
+    This is deliberately separate from `GET /cameras`, which serves browsers.
+    It requires state-admin authority and is withheld from the OpenAPI schema.
+
+    **Credentials are not returned.** An earlier version of this route emitted
+    `Camera.rtsp_url` verbatim, and that column carries the sandbox password in
+    its userinfo component — so an unauthenticated GET returned live credentials
+    for the government camera grid, in JSON, for up to a thousand cameras. The
+    docstring at the time said the route "sits behind service-to-service
+    authentication" in a real deployment, which was true and was not enforced;
+    a comment is not an access control.
+
+    Two things changed. The route now requires an authenticated state admin, and
+    the credential is stripped from the URL before it is returned. The worker
+    reconstructs it from its own configuration, which it already holds — it
+    never needed the password to arrive over HTTP, so sending it was gratuitous
+    as well as dangerous.
     """
     q = select(Camera)
     if live_only:
@@ -511,8 +586,8 @@ async def internal_stream_urls(
             "id": str(cam.id),
             "native_id": cam.native_id,
             "name": cam.name,
-            "rtsp_url": cam.rtsp_url,
-            "hls_url": cam.hls_url,
+            "rtsp_url": _strip_credentials(cam.rtsp_url),
+            "hls_url": _strip_credentials(cam.hls_url),
             "codec": cam.codec,
         }
         for cam in cameras
@@ -686,7 +761,8 @@ async def bulk_import_template():
 
 
 @router.get("/health-status", summary="Camera health and maintenance status")
-async def camera_health(db: AsyncSession = Depends(get_db)):
+async def camera_health(db: AsyncSession = Depends(get_db),
+                        principal: Principal = RequireOperator):
     """
     Per-camera health, as the registry can actually determine it.
 

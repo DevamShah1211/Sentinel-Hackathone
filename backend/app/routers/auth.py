@@ -9,6 +9,7 @@ role model can be shown rather than merely described.
 from __future__ import annotations
 
 import logging
+import secrets
 from typing import Optional
 from uuid import UUID
 
@@ -86,27 +87,46 @@ class LoginRequest(BaseModel):
 
 # ─── Seeding ──────────────────────────────────────────────────────────────────
 
-DEMO_USERS = (
-    # (email, username, password, role, department)
-    (settings.demo_admin_email, "State Admin", settings.demo_admin_password,
-     ROLE_STATE_ADMIN, "Home Department"),
-    ("operator@sentinel.gujarat.gov.in", "Traffic Operator", "operator-demo-2026",
-     ROLE_DEPT_OPERATOR, "Traffic Police"),
-    ("viewer@sentinel.gujarat.gov.in", "Control Room Viewer", "viewer-demo-2026",
-     ROLE_VIEWER, "City Surveillance"),
-)
+def _demo_users() -> tuple[tuple[str, str, str, str, str], ...]:
+    """
+    The demonstration accounts, with passwords generated rather than published.
+
+    Every password here used to be a constant in this file. That is safe only
+    while authentication is switched off — the moment a deployment enables it,
+    three known-password accounts exist, one of them state admin, and the
+    credentials are in a public repository. Switching auth on is supposed to
+    make the system safer, not hand an attacker the door key.
+
+    A password supplied through configuration is respected; otherwise one is
+    generated per account and logged once, at creation, so the operator can
+    record it. Nothing is reset on later starts.
+    """
+    admin_password = settings.demo_admin_password or secrets.token_urlsafe(18)
+    return (
+        # (email, username, password, role, department)
+        (settings.demo_admin_email, "State Admin", admin_password,
+         ROLE_STATE_ADMIN, "Home Department"),
+        ("operator@sentinel.gujarat.gov.in", "Traffic Operator",
+         secrets.token_urlsafe(18), ROLE_DEPT_OPERATOR, "Traffic Police"),
+        ("viewer@sentinel.gujarat.gov.in", "Control Room Viewer",
+         secrets.token_urlsafe(18), ROLE_VIEWER, "City Surveillance"),
+    )
 
 
 async def seed_demo_users() -> None:
     """
-    Create the demonstration accounts if they do not exist.
+    Create the demonstration accounts, when explicitly asked to.
 
     Only ever creates; an existing account is left alone so a changed password is
     never silently reset back to the default.
     """
+    if not settings.seed_demo_users:
+        logger.info("Demonstration accounts not seeded (SEED_DEMO_USERS is false).")
+        return
+
     async with AsyncSessionLocal() as db:
         created = []
-        for email, username, password, role, department in DEMO_USERS:
+        for email, username, password, role, department in _demo_users():
             exists = (await db.execute(select(User).where(User.email == email))).scalar_one_or_none()
             if exists:
                 continue
@@ -118,10 +138,15 @@ async def seed_demo_users() -> None:
                 department=department,
                 is_active=True,
             ))
-            created.append(f"{email} ({role})")
+            created.append(f"    {email}  role={role}  password={password}")
         if created:
             await db.commit()
-            logger.info("Seeded %d demonstration account(s): %s", len(created), ", ".join(created))
+            # Logged once, at creation, because a generated password that is
+            # never shown cannot be used. Subsequent starts print nothing.
+            logger.warning(
+                "Seeded %d demonstration account(s). Record these now — they are "
+                "not stored anywhere else and will not be shown again:%s%s",
+                len(created), chr(10), chr(10).join(created))
 
 
 # ─── Endpoints ────────────────────────────────────────────────────────────────

@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import audit
 from app.database import get_db
-from app.security import Principal, RequireOperator
+from app.security import Principal, RequireOperator, RequireViewer
 from app.models import Camera, Detection
 
 logger = logging.getLogger("sentinel.detections")
@@ -346,7 +346,17 @@ async def plate_route(
 
 
 @router.post("", response_model=dict, summary="Ingest a new detection (called by ANPR worker)")
-async def create_detection(body: DetectionCreate, db: AsyncSession = Depends(get_db)):
+async def create_detection(body: DetectionCreate, db: AsyncSession = Depends(get_db),
+                           principal: Principal = RequireOperator):
+    """
+    Ingest one detection from the ANPR worker.
+
+    Guarded because the detection index is the evidentiary record. Unprotected,
+    this route let anyone place any registration at any camera at any timestamp
+    — which forges the route reconstruction, the exported report, and the
+    watchlist alert that fires from it. The worker authenticates like any other
+    client; see SENTINEL_WORKER_TOKEN in anpr_worker.py.
+    """
     from app.routers.watchlist import check_and_alert
 
     camera_id = body.camera_id
@@ -394,7 +404,8 @@ async def create_detection(body: DetectionCreate, db: AsyncSession = Depends(get
 
 
 @router.get("/recent", summary="Most recent 50 detections across all cameras")
-async def recent_detections(db: AsyncSession = Depends(get_db)):
+async def recent_detections(principal: Principal = RequireViewer,
+                            db: AsyncSession = Depends(get_db)):
     q = (
         select(Detection, Camera.name, Camera.department)
         .join(Camera, Detection.camera_id == Camera.id)

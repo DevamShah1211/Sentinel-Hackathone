@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models import Alert, Detection, WatchlistEntry, Camera
+from app.security import Principal, RequireOperator, RequireViewer
 
 logger = logging.getLogger("sentinel.alerts")
 router = APIRouter()
@@ -44,6 +45,7 @@ class AlertOut(BaseModel):
 @router.get("", response_model=list[AlertOut], summary="List alerts, newest first")
 async def list_alerts(
     db: AsyncSession = Depends(get_db),
+    principal: Principal = RequireViewer,
     status: Optional[str] = Query(None, description="new / ack / resolved"),
     limit: int = Query(100, le=500),
     offset: int = Query(0),
@@ -100,15 +102,24 @@ async def list_alerts(
 async def acknowledge_alert(
     alert_id: UUID,
     db: AsyncSession = Depends(get_db),
-    operator: str = Query("operator"),
     notes: Optional[str] = Query(None),
+    principal: Principal = RequireOperator,
 ):
+    """
+    Record that a named officer has taken responsibility for an alert.
+
+    The acknowledger is taken from the authenticated principal. It used to be a
+    query parameter defaulting to "operator", which meant the caller chose the
+    name recorded against the action — so the acknowledgement trail recorded
+    whatever an unauthenticated client typed. An audit record that the subject
+    of the audit can author is not an audit record.
+    """
     result = await db.execute(select(Alert).where(Alert.id == alert_id))
     alert = result.scalar_one_or_none()
     if not alert:
         raise HTTPException(404, "Alert not found")
     alert.status = "ack"
-    alert.acknowledged_by = operator
+    alert.acknowledged_by = principal.email
     alert.acknowledged_at = datetime.now(timezone.utc)
     alert.notes = notes
     await db.commit()
@@ -116,7 +127,8 @@ async def acknowledge_alert(
 
 
 @router.patch("/{alert_id}/resolve", summary="Resolve an alert")
-async def resolve_alert(alert_id: UUID, db: AsyncSession = Depends(get_db)):
+async def resolve_alert(alert_id: UUID, db: AsyncSession = Depends(get_db),
+                        principal: Principal = RequireOperator):
     result = await db.execute(select(Alert).where(Alert.id == alert_id))
     alert = result.scalar_one_or_none()
     if not alert:
@@ -127,7 +139,8 @@ async def resolve_alert(alert_id: UUID, db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/stats", summary="Alert counts by status and severity")
-async def alert_stats(db: AsyncSession = Depends(get_db)):
+async def alert_stats(db: AsyncSession = Depends(get_db),
+                      principal: Principal = RequireViewer):
     from sqlalchemy import func
     result = await db.execute(
         select(Alert.status, func.count(Alert.id)).group_by(Alert.status)

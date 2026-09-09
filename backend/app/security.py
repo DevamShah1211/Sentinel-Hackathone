@@ -122,15 +122,28 @@ async def current_principal(
     # than at token expiry.
     user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none() \
         if user_id else None
-    if user is not None and not user.is_active:
+    if user is None:
+        # A token whose subject no longer exists must not authenticate. This
+        # previously fell through and built the principal from the token's own
+        # claims, so a deleted account kept working — at its original role —
+        # for the remaining life of the token.
+        raise HTTPException(
+            status.HTTP_401_UNAUTHORIZED,
+            "Account no longer exists",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    if not user.is_active:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Account is deactivated")
 
+    # Identity and role come from the database row, not from the token. A claim
+    # is what the holder was granted when the token was minted; the row is what
+    # they are entitled to now, which is what authorisation should turn on.
     return Principal(
-        id=user_id,
-        email=payload.get("email", "unknown"),
-        username=payload.get("username", "unknown"),
-        role=payload.get("role", ROLE_VIEWER),
-        department=payload.get("department"),
+        id=str(user.id),
+        email=user.email,
+        username=user.username,
+        role=user.role,
+        department=user.department,
         authenticated=True,
     )
 
