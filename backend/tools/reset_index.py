@@ -1,5 +1,5 @@
 """
-Clear the detection index and its alerts.
+Clear the detection index: detections, their alerts, and scene observations.
 
 Used before re-seeding a demonstration so old journeys do not blend into new
 ones. The camera registry, watchlist, users and audit trail are deliberately left
@@ -30,12 +30,14 @@ async def reset(confirm: bool) -> int:
     async with engine.begin() as conn:
         detections = await conn.scalar(text("SELECT count(*) FROM detections"))
         alerts = await conn.scalar(text("SELECT count(*) FROM alerts"))
+        scenes = await conn.scalar(text("SELECT count(*) FROM scene_observations"))
 
-        if not detections and not alerts:
+        if not detections and not alerts and not scenes:
             print("Index is already empty.")
             return 0
 
-        print(f"This will delete {detections} detections and {alerts} alerts.")
+        print(f"This will delete {detections} detections, {alerts} alerts "
+              f"and {scenes} scene observations.")
         print("The camera registry, watchlist, users and audit trail are kept.")
         if not confirm:
             answer = input("Proceed? [y/N] ").strip().lower()
@@ -46,7 +48,11 @@ async def reset(confirm: bool) -> int:
         # Alerts reference detections, so they go first.
         await conn.execute(text("DELETE FROM alerts"))
         await conn.execute(text("DELETE FROM detections"))
-        print(f"Cleared {detections} detections and {alerts} alerts.")
+        # Scene counts are part of the index too. To drop only the seeded
+        # ones and keep real worker rows, use seed_scene_analytics.py --clear.
+        await conn.execute(text("DELETE FROM scene_observations"))
+        print(f"Cleared {detections} detections, {alerts} alerts "
+              f"and {scenes} scene observations.")
 
     return 0
 

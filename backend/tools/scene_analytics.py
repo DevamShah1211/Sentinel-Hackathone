@@ -44,6 +44,7 @@ from app.object_detection import (  # noqa: E402
     ObjectDetector, SceneAggregator, summarise,
 )
 from app.settings import settings  # noqa: E402
+from app.vision import frame_is_decodable, frame_is_smeared  # noqa: E402
 from tools.api_auth import authenticated_session  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
@@ -95,9 +96,10 @@ def run(source: str, camera_native_id: str | None, seconds: int, stride: int,
         print("Continuing without publishing — counts will be printed only.\n")
 
     buckets: list[dict] = []
-    frames = analysed = 0
+    frames = analysed = corrupted = 0
     started = time.time()
     inference_seconds = 0.0
+    warmup_seconds = 0.0
     if save_frames:
         save_frames.mkdir(parents=True, exist_ok=True)
 
@@ -113,10 +115,30 @@ def run(source: str, camera_native_id: str | None, seconds: int, stride: int,
             if frames % stride:
                 continue
 
+            # RTSP packet loss leaves frames that decoded into artefacts rather
+            # than picture: flat pre-IDR output, or the vertical streaking a lost
+            # macroblock row drags down the image. On cam14 the detector found
+            # three cars on the clean right of a frame and none of the eight
+            # autos macroblocked on the left. Running on such a frame does not
+            # produce a wrong count so much as a quietly low one, so the frame
+            # is skipped and the skip is counted — it is not a sampled frame.
+            if not frame_is_decodable(frame) or frame_is_smeared(frame):
+                corrupted += 1
+                continue
+
             t0 = time.time()
             detections = detector.detect(frame)
-            inference_seconds += time.time() - t0
+            elapsed = time.time() - t0
             analysed += 1
+            # The first call loads a 114 MB ONNX session — about 1.3 s on this
+            # machine — and folding that into the mean makes a short run look
+            # four times slower than the steady state it will actually run at.
+            # Counted separately rather than hidden, because on a run of thirty
+            # frames the load is a real cost and worth seeing.
+            if analysed == 1:
+                warmup_seconds = elapsed
+            else:
+                inference_seconds += elapsed
 
             closed = aggregator.add(detections, time.time())
             if closed:
@@ -138,9 +160,15 @@ def run(source: str, camera_native_id: str | None, seconds: int, stride: int,
     if final:
         buckets.append(final)
 
-    print(f"\n{analysed} frames analysed from {frames} read")
-    if analysed:
-        print(f"mean inference: {inference_seconds / analysed * 1000:.0f} ms/frame")
+    print(f"\n{analysed} frames analysed from {frames} read"
+          + (f", {corrupted} skipped as undecodable" if corrupted else ""))
+    if analysed > 1:
+        print(f"mean inference: {inference_seconds / (analysed - 1) * 1000:.0f} "
+              f"ms/frame steady state "
+              f"(model load: {warmup_seconds * 1000:.0f} ms, once)")
+    elif analysed:
+        print(f"one frame in {warmup_seconds * 1000:.0f} ms, "
+              f"including the model load")
     print(f"{len(buckets)} minute bucket(s)")
 
     for bucket in buckets:

@@ -61,12 +61,17 @@ export const getCameras = (params?: Record<string, unknown>) => api.get('/camera
 export const getCameraHealth = () => api.get('/cameras/health-status').then(r => r.data)
 
 // ─── Scene analytics: vehicle / person / object detection ────────
-export const getSceneSummary = (hours = 24) =>
-    api.get('/analytics/scene/summary', { params: { hours } }).then(r => r.data)
-export const getSceneByCamera = (hours = 24, limit = 30) =>
-    api.get('/analytics/scene/by-camera', { params: { hours, limit } }).then(r => r.data)
-export const getSceneHourly = (hours = 24) =>
-    api.get('/analytics/scene/hourly', { params: { hours } }).then(r => r.data)
+// `includeSeeded` drops rows written by the seeding tool, so a demonstration
+// can switch to real worker data without anyone deleting the seeded set.
+export const getSceneSummary = (hours = 24, includeSeeded = true) =>
+    api.get('/analytics/scene/summary',
+            { params: { hours, include_seeded: includeSeeded } }).then(r => r.data)
+export const getSceneByCamera = (hours = 24, includeSeeded = true, limit = 30) =>
+    api.get('/analytics/scene/by-camera',
+            { params: { hours, limit, include_seeded: includeSeeded } }).then(r => r.data)
+export const getSceneHourly = (hours = 24, includeSeeded = true) =>
+    api.get('/analytics/scene/hourly',
+            { params: { hours, include_seeded: includeSeeded } }).then(r => r.data)
 export const getCameraStats = () => api.get('/cameras/stats').then(r => r.data)
 export const syncCatalogue = () => api.post('/ingest/sync').then(r => r.data)
 export const getIngestStatus = () => api.get('/ingest/status').then(r => r.data)

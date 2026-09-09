@@ -1,3 +1,4 @@
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase
 from app.settings import settings
@@ -30,7 +31,22 @@ async def init_db():
     from app import models  # noqa: F401 — registers all ORM models
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        # create_all only creates missing tables; it never adds a column to one
+        # that exists. Columns added after a table first shipped go here as
+        # idempotent statements, so a running instance picks them up on restart
+        # rather than failing its first query against them.
+        for statement in _COLUMN_ADDITIONS:
+            await conn.execute(text(statement))
     logger.info("Database tables initialised.")
+
+
+# Additive-only. Each must be safe to run on every start.
+_COLUMN_ADDITIONS = (
+    "ALTER TABLE scene_observations "
+    "ADD COLUMN IF NOT EXISTS source VARCHAR(20) NOT NULL DEFAULT 'worker'",
+    "CREATE INDEX IF NOT EXISTS ix_scene_observations_source "
+    "ON scene_observations (source)",
+)
 
 
 async def get_db() -> AsyncSession:

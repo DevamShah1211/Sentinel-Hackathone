@@ -494,7 +494,7 @@ and the reason edge-first is the only viable topology.
 scale of eight cameras, exactly the failure mode the arithmetic predicts at
 80,000: a single aggregation point becomes the constraint long before compute
 does. Our own numbers show the compute side has enormous headroom — 26 concurrent
-ANPR streams per machine (§1), 4% CPU while relaying video — and the thing that
+ANPR streams per machine (§1), 4% CPU while accepting eight connections — and the thing that
 breaks first is the shared ingress. That is the case for district edge nodes,
 made with evidence rather than a diagram.
 
@@ -599,6 +599,67 @@ and siting, which is a procurement decision. It is the single most useful thing
 this project can tell the department, and it is worth more than a demonstration
 tuned to hide it.
 
+## 2h. Gateway restored, 9 September 2026 — first live plate reads, and what the platform did with them
+
+The gateway came back around 16:30 IST. A single-attempt liveness sweep with an
+8 s timeout found **25 of 30 cameras delivering frames**; cam08, cam10, cam11,
+cam21 and cam25 did not answer within the window. cam10 had delivered 35 frames
+to the detection worker twenty minutes earlier between 30 s stalls, so "dead" on
+one attempt means flaky, not offline. Resolutions across the live set: fifteen
+at 1920×1080, five at 1280×720, three at 1280×960, one at 960×576, one at
+2560×1440.
+
+The ANPR worker then ran for ten minutes on cam01, cam12 and cam14. It indexed
+two plates — the first live reads this grid has produced — both from cam12, the
+Adalaj toll plaza, 27 seconds apart:
+
+| Read | Vote | Plate box | px/char | Per-frame reads inside the track | Flagged | Alerts |
+|---|---|---|---|---|---|---|
+| `RJ3E4555` | 0.81 | 53 px wide | 6.6 | `RJEEA555` `RJAEA555` `RJEEA555` | partial | 0 |
+| `RJ4E4555` | 0.79 | 51 px wide | 6.4 | `J4TEA555` `WJAEA555` | partial | 0 |
+
+Two things to read off that table. First, the per-frame reads inside each
+track disagree with each other and with the vote, and the two tracks — almost
+certainly the same vehicle — disagree on the third character. Both are eight
+characters, one short of any valid Indian format. These are the confidently
+wrong reads §2g predicted, now observed on live footage with a vote confidence
+of 0.8.
+
+Second, the platform handled them correctly. Both were written with
+`partial: true` and the reason `below readable resolution; 6.4 px per
+character, need 12`, stored as searchable, and **raised no alert** — the
+`MIN_ALERTABLE_PX_PER_CHAR = 12` rule from §2g doing on live data exactly what
+it was added to do. A system without that rule would have put two wrong
+Rajasthan registrations in front of an operator with 80% confidence attached.
+
+One thing it did not catch: the plate-grammar stage labelled both eight-character
+strings `standard` format with zero corrections. The partial flag made this
+harmless here, but a length check belongs in the grammar as well, so a
+malformed read is rejected for being malformed rather than only for being small.
+Noted rather than fixed, because it changes evidentiary behaviour and should be
+tested against the ground-truth set in §2 first.
+
+**The sandbox feeds are recorded footage, not live cameras.** Frames captured
+from cam14 at 16:55 IST on 9 September carry a burnt-in timestamp of
+`13-06-2026 21:27:51` and show a night scene; sunset in Ahmedabad in September
+is after 18:30. The gateway is replaying stored video. This changes nothing
+about resolution, plate legibility or detector behaviour — the pixels are what
+the cameras produced — but it means "live" throughout this document means
+*streamed live from the gateway*, and any time-of-day analysis run against the
+sandbox measures the recording, not the road. The diurnal shape on the Grid
+Health page therefore comes from the seeding tool and is labelled as such; the
+real-data view shows what the loop contains.
+
+**Corrupted frames lose detections quietly.** The same cam14 frames show heavy
+macroblocking on the near lanes from RTSP packet loss — the `bytestream` errors
+the decoder logs — and the detector found three clean cars on the far side and
+none of the eight artefacted autos in front. That is not a wrong count but a
+silently low one. The scene tool now applies the same `frame_is_decodable` and
+`frame_is_smeared` gates the ANPR pipeline uses, skips such frames, and reports
+how many it skipped; a skipped frame is not a sampled one.
+
+Reproduce: `python anpr_worker.py --camera cam12` with `SENTINEL_WORKER_TOKEN` set.
+
 ## 3. Object detection — the analytics tier that works on these cameras
 
 Section 2g reports that no camera on the government grid produced a correct
@@ -679,6 +740,35 @@ Within a bucket the figure kept per class is the **peak in any single frame**,
 not the sum across frames. Summing counts a parked car once per frame — sixty
 times a minute — producing a number that grows with sampling rate rather than
 with traffic. Peak answers the question a junction count is actually asking.
+
+### 3e. The 66 ms figure re-measured, two ways it was measured wrongly, and what the video relay costs
+
+The figures in §3a–3b were re-measured on 9 September with `tools/bench_detector.py`,
+which exists because the number was got wrong twice in one afternoon:
+
+| Condition | Steady-state inference | Note |
+|---|---|---|
+| Quiet machine, real 720p sandbox frames | **66 ms** (n=2, 66–67) | agrees with §3a/3b |
+| Same, but the video wall relaying through the API host | median 188 ms, mean 987 ms, max 2.6 s (n=23) | contention |
+| cam14 worker run, wall relaying + seeder posting | 432 ms mean (n=53) | contention |
+| Random-noise frame, machine at 95% from tiled ANPR | 262–329 ms | **wrong**: noise floods the candidate stage; and the load |
+| cam10 live run, 35 frames, mean including model load | 1,356 ms | **wrong**: 861–1,193 ms of one-off model load spread over 35 frames |
+
+The first wrong number nearly rewrote §3a. It was taken on a synthetic frame —
+which produces boxes a real scene never does — while three tiled ANPR streams
+held the CPU, and neither condition is one a deployment sees. The second was
+the tool's own mean folding the ONNX session load into a short run; the tool
+now reports warm-up separately, and the benchmark refuses to start on a busy
+machine rather than measuring some other process.
+
+**The relay is not free.** With the video wall open and no detector running, the
+API host sat at **26% of 20 cores** (one core at 72%) doing nothing but decoding
+H.264 and re-encoding MJPEG for the tiles. §5a's 4% was measured while
+*accepting* eight RTSP connections, not while transcoding them, and the two
+claims have been separated in the text. The operational consequence is the
+one HLD §9 already draws for other reasons: viewing and inference must not
+share a host. A detector that runs at 66 ms alone and 188–432 ms beside a wall
+has lost most of its per-machine capacity to somebody watching video.
 
 ## 4. Bandwidth — what edge processing actually saves
 

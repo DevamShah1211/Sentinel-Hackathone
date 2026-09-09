@@ -143,6 +143,13 @@ class TestBuckets:
         for bucket in self._buckets():
             assert 0.5 <= bucket["max_confidence"] <= 1.0
 
+    def test_every_bucket_declares_itself_seeded(self):
+        """
+        The one property that lets the page label these rows and `--clear`
+        remove them. A bucket without it is indistinguishable from a worker's.
+        """
+        assert all(b["source"] == "seed" for b in self._buckets())
+
 
 class TestProfiles:
     def test_every_profile_names_a_real_mix(self):

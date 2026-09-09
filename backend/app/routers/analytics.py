@@ -5,7 +5,7 @@ The output report is a required submission artefact per the playbook.
 import io
 import logging
 from datetime import datetime, timedelta, timezone
-from typing import Optional
+from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
@@ -395,6 +395,10 @@ class SceneObservationIn(BaseModel):
     counts_by_label: dict[str, int] = {}
     counts_by_category: dict[str, int] = {}
     max_confidence: float = 0.0
+    # Who produced the bucket. A worker over a real feed is the default;
+    # the seeding tool declares itself so its rows can be labelled and
+    # removed without touching real ones.
+    source: Literal["worker", "seed"] = "worker"
 
     model_config = {"extra": "forbid"}
 
@@ -446,6 +450,7 @@ async def ingest_scene_observation(
         existing.counts_by_label = body.counts_by_label
         existing.counts_by_category = body.counts_by_category
         existing.max_confidence = body.max_confidence
+        existing.source = body.source
         await db.commit()
         return {"status": "updated", "camera": camera.native_id}
 
@@ -457,6 +462,7 @@ async def ingest_scene_observation(
         counts_by_label=body.counts_by_label,
         counts_by_category=body.counts_by_category,
         max_confidence=body.max_confidence,
+        source=body.source,
     ))
     await db.commit()
     return {"status": "created", "camera": camera.native_id}
@@ -521,6 +527,7 @@ async def ingest_scene_batch(
             row.counts_by_label = observation.counts_by_label
             row.counts_by_category = observation.counts_by_category
             row.max_confidence = observation.max_confidence
+            row.source = observation.source
             updated += 1
         else:
             db.add(SceneObservation(
@@ -531,6 +538,7 @@ async def ingest_scene_batch(
                 counts_by_label=observation.counts_by_label,
                 counts_by_category=observation.counts_by_category,
                 max_confidence=observation.max_confidence,
+                source=observation.source,
             ))
             created += 1
 
@@ -542,6 +550,8 @@ async def ingest_scene_batch(
 async def scene_summary(
     db: AsyncSession = Depends(get_db),
     hours: int = Query(24, ge=1, le=168),
+    include_seeded: bool = Query(
+        True, description="Include rows written by the seeding tool"),
     principal: Principal = RequireViewer,
 ):
     """
@@ -554,12 +564,15 @@ async def scene_summary(
     report nothing at all from these cameras.
     """
     since = datetime.now(timezone.utc) - timedelta(hours=hours)
+    # Off by default only when asked: a page showing real data must be able
+    # to drop the demonstration rows without anyone deleting them.
+    source_filter = () if include_seeded else (SceneObservation.source == "worker",)
 
     rows = (await db.execute(
         select(SceneObservation.counts_by_category,
                SceneObservation.counts_by_label,
                SceneObservation.frames_sampled)
-        .where(SceneObservation.bucket_start >= since)
+        .where(SceneObservation.bucket_start >= since, *source_filter)
     )).all()
 
     # Peak within a bucket, summed across buckets, is a throughput estimate
@@ -578,12 +591,19 @@ async def scene_summary(
 
     cameras_reporting = (await db.execute(
         select(func.count(func.distinct(SceneObservation.camera_id)))
-        .where(SceneObservation.bucket_start >= since)
+        .where(SceneObservation.bucket_start >= since, *source_filter)
     )).scalar() or 0
+
+    by_source = dict((await db.execute(
+        select(SceneObservation.source, func.count(SceneObservation.id))
+        .where(SceneObservation.bucket_start >= since, *source_filter)
+        .group_by(SceneObservation.source)
+    )).all())
 
     return {
         "window_hours": hours,
         "buckets": len(rows),
+        "buckets_by_source": by_source,
         "frames_analysed": frames,
         "cameras_reporting": cameras_reporting,
         "observations": observations,
@@ -597,17 +617,22 @@ async def scene_summary(
 async def scene_by_camera(
     db: AsyncSession = Depends(get_db),
     hours: int = Query(24, ge=1, le=168),
+    include_seeded: bool = Query(
+        True, description="Include rows written by the seeding tool"),
     limit: int = Query(30, ge=1, le=200),
     principal: Principal = RequireViewer,
 ):
     """Which cameras are busy, and which are watching an empty street."""
     since = datetime.now(timezone.utc) - timedelta(hours=hours)
+    # Off by default only when asked: a page showing real data must be able
+    # to drop the demonstration rows without anyone deleting them.
+    source_filter = () if include_seeded else (SceneObservation.source == "worker",)
 
     rows = (await db.execute(
         select(SceneObservation.camera_id, Camera.name, Camera.department,
                SceneObservation.counts_by_category, SceneObservation.frames_sampled)
         .join(Camera, Camera.id == SceneObservation.camera_id)
-        .where(SceneObservation.bucket_start >= since)
+        .where(SceneObservation.bucket_start >= since, *source_filter)
     )).all()
 
     per_camera: dict[str, dict] = {}
@@ -631,6 +656,8 @@ async def scene_by_camera(
 async def scene_hourly(
     db: AsyncSession = Depends(get_db),
     hours: int = Query(24, ge=1, le=168),
+    include_seeded: bool = Query(
+        True, description="Include rows written by the seeding tool"),
     principal: Principal = RequireViewer,
 ):
     """
@@ -646,11 +673,14 @@ async def scene_hourly(
     here rather than in each client that might get the offset wrong.
     """
     since = datetime.now(timezone.utc) - timedelta(hours=hours)
+    # Off by default only when asked: a page showing real data must be able
+    # to drop the demonstration rows without anyone deleting them.
+    source_filter = () if include_seeded else (SceneObservation.source == "worker",)
 
     rows = (await db.execute(
         select(SceneObservation.bucket_start,
                SceneObservation.counts_by_category)
-        .where(SceneObservation.bucket_start >= since)
+        .where(SceneObservation.bucket_start >= since, *source_filter)
     )).all()
 
     ist = timezone(timedelta(hours=5, minutes=30))

@@ -3,6 +3,7 @@ Seed scene-analytics buckets so the Grid Health page has something to show.
 
     python tools/seed_scene_analytics.py                 # 24 hours
     python tools/seed_scene_analytics.py --hours 48
+    python tools/seed_scene_analytics.py --clear         # remove seeded rows only
 
 WHY THIS EXISTS, AND WHAT IT IS NOT
 -----------------------------------
@@ -11,15 +12,19 @@ only thing that produces evidentiary counts. It needs the sandbox gateway up and
 roughly a minute of wall clock per minute of footage, so a page opened on a
 laptop with no gateway shows an empty state and demonstrates nothing.
 
-This fills that gap, and says so: the cameras it seeds are listed on stdout, and
-the Grid Health page carries a banner naming these rows as demonstration data
-whenever any of them are present. Nothing here is passed off as a measurement.
-The measured numbers live in MEASUREMENTS section 3 and came from the real
-detector on real frames.
+This fills that gap, and every row it writes says so: `source = "seed"`, as
+opposed to the `"worker"` a detector writes. That single column is what lets
+the Grid Health page label demonstration data in place, offer a real-data-only
+view, and lets `--clear` remove these rows without touching a real one. An
+earlier version wrote rows indistinguishable from a worker's and claimed a
+banner the page did not have; both were wrong, and the column is the fix.
+
+Nothing here is passed off as a measurement. The measured numbers live in
+MEASUREMENTS section 3 and came from the real detector on real frames.
 
 The shape is not arbitrary. Counts follow a diurnal curve with twin peaks around
-10:00 and 19:00 and a trough before dawn, and the per-camera scale comes from
-what each camera actually watches: a highway bypass sees more vehicles and
+10:00 and 19:00 IST and a trough before dawn, and the per-camera scale comes
+from what each camera actually watches: a highway bypass sees more vehicles and
 almost no pedestrians, a bus port inverts that, a toll plaza sees trucks a
 residential street never does. A reviewer who knows Indian roads should not be
 able to point at the curve and say it is wrong.
@@ -34,6 +39,7 @@ every camera reports cannot demonstrate finding the one that does not.
 from __future__ import annotations
 
 import argparse
+import asyncio
 import math
 import random
 import sys
@@ -175,18 +181,27 @@ def build_buckets(native_id: str, hours: int, now: datetime,
             # The detector scored genuine objects 0.5-0.85 on real frames; a
             # bucket keeps the highest seen, so it sits in the upper half.
             "max_confidence": round(rng.uniform(0.68, 0.94), 4),
+            "source": "seed",
         })
     return buckets
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(
-        description="Seed scene-analytics buckets for the Grid Health page")
-    parser.add_argument("--hours", type=int, default=24)
-    parser.add_argument("--api", default=API_BASE)
-    args = parser.parse_args()
+async def clear_seeded() -> int:
+    """Delete seeded rows and only seeded rows. Returns how many went."""
+    from sqlalchemy import text
+    from app.database import engine
 
-    api = authenticated_session(args.api)
+    async with engine.begin() as conn:
+        before = (await conn.execute(text(
+            "SELECT count(*) FROM scene_observations WHERE source = 'seed'"
+        ))).scalar() or 0
+        await conn.execute(text(
+            "DELETE FROM scene_observations WHERE source = 'seed'"))
+    return int(before)
+
+
+def seed(hours: int, api_base: str) -> int:
+    api = authenticated_session(api_base)
     if api is None:
         print("Could not authenticate against the API.", file=sys.stderr)
         return 1
@@ -195,11 +210,11 @@ def main() -> int:
     now = datetime.now(timezone.utc)
 
     total = failed = 0
-    print(f"Seeding {args.hours}h of scene analytics across "
-          f"{len(PROFILES)} cameras\n")
+    print(f"Seeding {hours}h of scene analytics across {len(PROFILES)} cameras, "
+          f"every row marked source=seed\n")
 
     for native_id in PROFILES:
-        buckets = build_buckets(native_id, args.hours, now, rng)
+        buckets = build_buckets(native_id, hours, now, rng)
         ok = 0
         # Batched. Posting each bucket individually is 1,440 requests per camera
         # per day, which the API rate-limits for good reason — the fix is the
@@ -207,7 +222,7 @@ def main() -> int:
         for start in range(0, len(buckets), BATCH_SIZE):
             chunk = buckets[start:start + BATCH_SIZE]
             try:
-                response = api.post(f"{args.api}/analytics/scene/batch",
+                response = api.post(f"{api_base}/analytics/scene/batch",
                                     json={"observations": chunk}, timeout=90)
                 if response.ok:
                     ok += len(chunk)
@@ -233,7 +248,27 @@ def main() -> int:
     print(f"\n{total} buckets written" + (f", {failed} failed" if failed else ""))
     print("\nLeft with no data on purpose, so the page can show a gap:")
     print(f"  {NOT_SEEDED}")
+    print("\nRemove with: python tools/seed_scene_analytics.py --clear")
     return 0
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="Seed scene-analytics buckets for the Grid Health page")
+    parser.add_argument("--hours", type=int, default=24)
+    parser.add_argument("--api", default=API_BASE)
+    parser.add_argument("--clear", action="store_true",
+                        help="Delete rows with source=seed. Worker rows are untouched.")
+    args = parser.parse_args()
+
+    if args.clear:
+        if sys.platform == "win32":
+            asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+        removed = asyncio.run(clear_seeded())
+        print(f"Removed {removed} seeded bucket(s). Worker rows untouched.")
+        return 0
+
+    return seed(args.hours, args.api)
 
 
 if __name__ == "__main__":

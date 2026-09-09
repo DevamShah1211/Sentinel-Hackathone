@@ -181,7 +181,18 @@ curl -s "http://<host>/api/v1/analytics/scene/by-camera?hours=24" -H "$AUTH"
 
 # Activity by hour of day, returned in IST
 curl -s "http://<host>/api/v1/analytics/scene/hourly?hours=24" -H "$AUTH"
+
+# Real worker rows only, dropping anything the seeding tool wrote
+curl -s "http://<host>/api/v1/analytics/scene/summary?hours=24&include_seeded=false" -H "$AUTH"
 ```
+
+Every bucket carries a `source`: `"worker"` (the default — a detector over a
+real feed) or `"seed"` (`tools/seed_scene_analytics.py`, for demonstrations).
+The summary reports `buckets_by_source` so a client can say what its numbers
+are made of, and all three reads accept `include_seeded=false`. Provenance is a
+column rather than a convention because the two are otherwise byte-identical,
+and a demonstration row that cannot be told from a measurement is a
+measurement that cannot be trusted.
 
 **These counts are a throughput estimate, not a vehicle census.** Peak-per-minute
 summed over a window counts a vehicle standing at a junction for three minutes

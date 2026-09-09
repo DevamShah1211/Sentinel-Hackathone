@@ -153,6 +153,14 @@ class SceneObservation(Base):
     # Highest confidence seen in the bucket, for triaging a quiet camera.
     max_confidence = Column(Float, nullable=False, default=0.0)
 
+    # Who wrote the row: 'worker' for a detector over a real feed, 'seed' for
+    # tools/seed_scene_analytics.py. The seeder writes through the same endpoint
+    # as a worker, so without this the two are indistinguishable in the index —
+    # which means demonstration rows can neither be labelled on the page nor
+    # removed without also deleting the real ones.
+    source = Column(String(20), nullable=False, default="worker",
+                    server_default="worker", index=True)
+
     camera = relationship("Camera")
 
     __table_args__ = (

@@ -58,6 +58,9 @@ interface SceneSummary {
     observations: Record<string, number>
     by_label: Record<string, number>
     note?: string
+    // How many buckets in the window came from a real worker versus the
+    // seeding tool. Present so the page can say which it is showing.
+    buckets_by_source?: Record<string, number>
 }
 
 interface SceneCamera {
@@ -161,6 +164,9 @@ export default function HealthPage() {
     const [loading, setLoading] = useState(true)
     const [filter, setFilter] = useState<string>('all')
     const [windowHours, setWindowHours] = useState(24)
+    // Hide rows the seeding tool wrote. Off by default so a fresh checkout
+    // shows the demonstration grid; a recording of real data flips it.
+    const [realOnly, setRealOnly] = useState(false)
 
     const load = useCallback(async () => {
         setLoading(true)
@@ -168,16 +174,16 @@ export default function HealthPage() {
         // which is the half that matters when something is wrong.
         const [h, s, c, u] = await Promise.allSettled([
             getCameraHealth(),
-            getSceneSummary(windowHours),
-            getSceneByCamera(windowHours),
-            getSceneHourly(windowHours),
+            getSceneSummary(windowHours, !realOnly),
+            getSceneByCamera(windowHours, !realOnly),
+            getSceneHourly(windowHours, !realOnly),
         ])
         if (h.status === 'fulfilled') setHealth(h.value as HealthReport)
         if (s.status === 'fulfilled') setScene(s.value as SceneSummary)
         if (c.status === 'fulfilled') setSceneCameras((c.value as { cameras: SceneCamera[] }).cameras ?? [])
         if (u.status === 'fulfilled') setHourly((u.value as { hours: HourlyPoint[] }).hours ?? [])
         setLoading(false)
-    }, [windowHours])
+    }, [windowHours, realOnly])
 
     useEffect(() => { load() }, [load])
 
@@ -246,6 +252,8 @@ export default function HealthPage() {
 
     const peak = useMemo(() => peakHour(hourly), [hourly])
     const hasScene = (scene?.buckets ?? 0) > 0
+    const seededBuckets = scene?.buckets_by_source?.seed ?? 0
+    const workerBuckets = scene?.buckets_by_source?.worker ?? 0
 
     return (
         <div className="page-content">
@@ -324,6 +332,25 @@ export default function HealthPage() {
                             {compact(scene?.buckets ?? 0)} minute buckets · last {windowHours}h
                         </div>
                     </div>
+                </div>
+            )}
+
+            {/* Say what the counts are made of. Demonstration rows are labelled
+                in place and can be hidden, never silently mixed in. */}
+            {(seededBuckets > 0 || realOnly) && (
+                <div className={`demo-banner${realOnly ? ' is-real' : ''}`} role="status">
+                    <Info size={13} aria-hidden="true" />
+                    <span>
+                        {realOnly
+                            ? <>Showing <strong>real detector data only</strong> — {workerBuckets.toLocaleString()} minute
+                                buckets from workers over live feeds. Seeded rows are hidden, not deleted.</>
+                            : <><strong>{seededBuckets.toLocaleString()}</strong> of the {(scene?.buckets ?? 0).toLocaleString()} buckets
+                                in this window were written by the seeding tool for demonstration.
+                                {workerBuckets > 0 && <> {workerBuckets.toLocaleString()} came from real workers.</>}</>}
+                    </span>
+                    <button className="btn btn-ghost btn-sm" onClick={() => setRealOnly(v => !v)}>
+                        {realOnly ? 'Include seeded data' : 'Real data only'}
+                    </button>
                 </div>
             )}
 

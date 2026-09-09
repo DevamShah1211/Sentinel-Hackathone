@@ -2133,6 +2133,29 @@ tr.is-clickable:hover { background: var(--bg-raised); }
   color: var(--text-secondary);
 }
 
+/* Provenance banner. Amber while seeded rows are in the mix, since a reviewer
+   must not mistake them for a measurement; green once only worker rows show. */
+.demo-banner {
+  display: flex; align-items: center; gap: 10px;
+  margin-bottom: 14px;
+  padding: 9px 13px;
+  border-radius: 9px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  background: rgba(245,179,66,0.08);
+  border: 1px solid rgba(245,179,66,0.32);
+}
+.demo-banner > svg { color: var(--yellow); flex: none; }
+.demo-banner > span { flex: 1; min-width: 0; }
+.demo-banner strong { color: var(--text-primary); }
+.demo-banner .btn { flex: none; }
+.demo-banner.is-real {
+  background: rgba(47,212,139,0.07);
+  border-color: rgba(47,212,139,0.3);
+}
+.demo-banner.is-real > svg { color: var(--green); }
+
 .scene-idle {
   display: inline-flex; align-items: center; gap: 3px;
   padding: 1px 6px; border-radius: 999px;

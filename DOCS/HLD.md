@@ -622,9 +622,15 @@ dependable ceiling, and the platform's defaults are set to it.
 saturated. The gateway accepts connections close to serially, and the wait grows
 with the queue depth.
 
+That 4% is the cost of *accepting* connections, not of serving them. Measured
+separately (MEASUREMENTS §3e), the relay transcoding a video wall's tiles from
+H.264 to MJPEG held the API host at 26% of 20 cores with nothing else running,
+and the object detector beside it slowed from 66 ms to 188–432 ms per frame.
+Viewing is a real load, which is why §9.4 keeps it off the inference hosts.
+
 This is the 80,000-camera problem reproduced at a scale of eight. The constraint
 is never the compute — our own figures give 26 concurrent ANPR streams per
-machine and 4% CPU while relaying video — it is the **single shared ingress**. A
+machine and 4% CPU while accepting eight connections — it is the **single shared ingress**. A
 statewide programme that routes cameras through one aggregation point meets this
 wall early and cannot buy its way past it with faster servers.
 
