@@ -16,9 +16,9 @@ vehicle route reconstruction across cameras, and an audited output report.
 |---|---|
 | Own-feed demo video (2–3 min) | _add before submitting_ |
 | Government-feed demo video | _add before submitting_ |
-| Output report (XLSX + PDF) | _add before submitting_ |
-| Solution presentation (PDF) | `DOCS/PRESENTATION.md` → export |
-| Technical proposal / HLD (PDF) | `DOCS/HLD.md` → export |
+| Output report (XLSX + PDF) | `submission/sentinel_output_report.xlsx` · `.pdf` |
+| Solution presentation (PDF) | `submission/Sentinel-PRESENTATION.pdf` |
+| Technical proposal / HLD (PDF) | `submission/Sentinel-HLD.pdf` |
 | Hosted instance | _add before submitting_ |
 | Repository | https://github.com/DevamShah1211/Sentinel-Hackathone |
 
