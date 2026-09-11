@@ -71,21 +71,32 @@ def stream_url(camera: str) -> str:
             f"/stream/{camera}")
 
 
-# COCO has no auto-rickshaw class, and the detector puts them in 'truck'
-# consistently. The stored label stays 'truck' — see object_detection.py, where
-# relabelling the model's own output is argued against — but a frame shown to a
-# reviewer in Gujarat should not assert that an auto-rickshaw is a truck. So the
-# ambiguity is disclosed on the drawing only, and the index is untouched.
-DISPLAY_LABELS = {"truck": "auto-rickshaw / truck"}
-
-
 def annotate(frame, detections) -> None:
-    """Draw boxes in place, for the demonstration video."""
+    """
+    Draw boxes in place, for the demonstration video.
+
+    **Category, not COCO class.** The drawing says 'vehicle' and 'person', never
+    'car' or 'truck', because the fine-grained label is not reliable on this
+    footage and should not be shown as though it were. Measured on cam14 at
+    night: auto-rickshaws are labelled 'car' in one box and 'truck' in the next,
+    and motorcycles with riders are labelled 'car' — rf-detr-nano is COCO-trained
+    on Western road scenes, has no auto-rickshaw class at all, and falls back to
+    its most common vehicle class when uncertain.
+
+    An earlier version disclosed only the rickshaw case, as 'auto-rickshaw /
+    truck'. That was not enough: it still printed 'car' over a motorcycle, so
+    the frame asserted something false while looking careful about it.
+
+    The counts this tier actually publishes are per category — SceneObservation
+    stores both, and every query and every figure on the Grid Health page reads
+    the category map — so showing the category loses nothing that is used, and
+    stops the picture claiming more than the model can support.
+    """
     for d in detections:
         x1, y1, x2, y2 = d.bbox
         colour = BOX_COLOURS.get(d.category, (200, 200, 200))
         cv2.rectangle(frame, (x1, y1), (x2, y2), colour, 2)
-        label = f"{DISPLAY_LABELS.get(d.label, d.label)} {d.confidence:.2f}"
+        label = f"{d.category} {d.confidence:.2f}"
         # Keep the caption inside the frame: a box near the right edge pushed
         # its text off-screen, and one at the top drew above the image.
         scale, thick = 0.55, 2
