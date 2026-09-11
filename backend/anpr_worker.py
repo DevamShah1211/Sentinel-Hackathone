@@ -462,6 +462,13 @@ def main() -> int:
     stats_sink: dict[str, WorkerStats] = {}
 
     def handle_signal(signum, _frame):
+        # Guarded, because one Ctrl+C is not one signal. The handler runs on the
+        # main thread while the daemon capture threads are still joining, and
+        # every re-delivery logged again — a single interrupt produced about a
+        # hundred identical lines, which is noise in a terminal and a reshoot if
+        # it lands in a demonstration recording.
+        if stop_event.is_set():
+            return
         logger.info("Signal %s received — shutting down…", signum)
         stop_event.set()
 
