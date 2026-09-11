@@ -1,10 +1,10 @@
 # Submission checklist
 
 Evaluation area 7 is submission completeness, and it is the easiest one to lose
-for no reason at all. Run this on Sunday morning with two people, out loud.
+for no reason at all. Run this with two people, out loud, the day before the deadline.
 
-**Deadline: Sunday 7 September, 14:00.** Portal load on deadline day is real —
-aim to submit by noon.
+**Deadline: Tuesday 15 September 2026.** Portal load on deadline day is real —
+submit a day early. Everything below is checkable; nothing here is a guess.
 
 ---
 
@@ -32,13 +32,13 @@ Every line here can be re-checked with the command beside it.
 | Artefact | Where | Verify |
 |---|---|---|
 | Working platform | `backend/`, `frontend/` | `docker compose up -d --build` |
-| Output report, XLSX + PDF | `submission/` | Open them; 62 detections, 6 plates, 8 cameras |
+| Output report, XLSX + PDF | `submission/` | Regenerate before submitting: `GET /analytics/report/xlsx` |
 | Camera registry, 30 cameras located | Live | `GET /api/v1/ingest/status` |
 | Raw sandbox catalogue | `catalogue.json` | Committed |
 | Technical proposal / HLD | `DOCS/HLD.md` | Every required section present |
 | Presentation content | `DOCS/PRESENTATION.md` | 12 slides with speaker notes |
 | Measured performance | `DOCS/MEASUREMENTS.md` | Each figure has its command |
-| Test suite | `backend/tests/` | `python -m pytest tests/ -q` → 57 passed |
+| Test suite | `backend/tests/` | `python -m pytest tests/ -q` → 187 passed |
 | Pipeline accuracy | — | `python tools/make_sample_feed.py --validate` → 6/6, 0 false positives |
 | Throughput | — | `python anpr_worker.py --benchmark` |
 | Role enforcement | — | Viewer token: 403 on audit and search, 200 on cameras |
@@ -51,6 +51,10 @@ Every line here can be re-checked with the command beside it.
 | **Model 2 — event tagging** | `POST /detections/{id}/tags` | Then `GET /detections?tag=suspect-vehicle` |
 | **Model 2 — second system** | `python tools/add_external_camera.py --help` | Registers an ONVIF/NVR/vendor feed; verifies it decodes first |
 | **Model 2 — systems unaffected** | `DOCS/HLD.md` §3.0 | Consumer never controller, enforced in code |
+| **Model 2 — object detection** | `tools/scene_analytics.py` | `--camera cam14 --seconds 120` → vehicle/person counts |
+| Grid health & scene analytics | `/health` in the console | Coverage gap, activity by hour, per-camera rate |
+| Live-data provenance | `GET /analytics/scene/summary` | `buckets_by_source` separates worker rows from seeded ones |
+| First live plate reads | `DOCS/MEASUREMENTS.md` §2h | Both flagged partial, both raised zero alerts |
 
 ---
 
@@ -97,7 +101,7 @@ http://localhost:8080`) if you are demonstrating from a laptop.
 
 ---
 
-## Sunday morning, out loud, two people
+## The day before, out loud, two people
 
 - [ ] Solution presentation exported to PDF, all required sections present
 - [ ] HLD exported to PDF, architecture diagrams legible at 100%
@@ -121,7 +125,7 @@ http://localhost:8080`) if you are demonstrating from a laptop.
 |---|---|
 | Sandbox unreachable | The registry, search, route, reports and audit all work from the index — demonstrate those and say the gateway is down. The video wall degrades to an explanatory tile rather than a black screen. |
 | Live viewing slow | The sandbox throttles HTTP under load. Playlists are cached for 4 s; use the 2×2 layout instead of 3×3 in the video. |
-| A judge asks why ANPR finds nothing on the grid | Go to `MEASUREMENTS.md` §2a. 165 plate-shaped regions, 87 OCR strings, 0 valid plates, every candidate roadside signage, all correctly rejected. Plates are 5–15 px. The same pipeline is 6/6 on legible footage. **Answer this before they ask it.** |
+| A judge asks why ANPR finds nothing on the grid | Go to `MEASUREMENTS.md` §2a and §2h. 165 plate-shaped regions, 87 OCR strings, 0 valid plates, every candidate roadside signage, all correctly rejected. Plates are 5–15 px. The same pipeline is 6/6 on legible footage. On 9 September, with the gateway restored, the worker's first two live reads were both 6.5 px/char, disagreed with each other, and the platform flagged both partial and alerted on neither — the guard working on live data. **Answer this before they ask it.** |
 | **A judge asks "if it struggles at 9 cameras, how do you reach 80,000?"** | `MEASUREMENTS.md` §5a. **Our machine sits at 4% CPU of 20 cores while the gateway takes 73 s to accept the eighth connection.** The limit is the shared ingress, not our compute. 2/2, 4/4 and 6/6 succeed; 8 degrades — a queue, not a load curve. No deployment routes 80,000 cameras through one gateway; ~400 district edge nodes at 200 cameras each is ordinary server load. **This is the 80,000-camera bottleneck reproduced at a scale of eight, and it is the evidence for edge-first.** |
 | Tiles are slow to come up during the recording | Expected — the gateway accepts connections nearly serially. Open the wall a minute before recording, use 2×2 or 1×1, and let it settle. |
 | Deployment fails on the day | The repository runs locally in three commands, and the videos are already recorded. Say the hosted instance is unavailable and offer the repository. |
