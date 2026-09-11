@@ -84,12 +84,19 @@ def annotate(frame, detections) -> None:
 
 def run(source: str, camera_native_id: str | None, seconds: int, stride: int,
         save_frames: Path | None, publish: bool) -> int:
+    # Load the detector BEFORE opening the stream. The ONNX session is 114 MB
+    # and takes about a second cold; opening the capture first left an RTSP
+    # connection idle across that window, and the sandbox gateway drops idle
+    # connections — the tool then read zero frames from a stream a direct probe
+    # showed delivering 15 of 15. The symptom looked like a dead camera and was
+    # really a self-inflicted stall.
+    detector = ObjectDetector()
+
     capture = cv2.VideoCapture(source, cv2.CAP_FFMPEG)
     if not capture.isOpened():
         print(f"Could not open {source}", file=sys.stderr)
         return 1
 
-    detector = ObjectDetector()
     aggregator = SceneAggregator(bucket_seconds=60)
     api = authenticated_session(API_BASE) if publish else None
     if publish and api is None:
