@@ -1164,17 +1164,26 @@ tr:last-child td { border-bottom: none; }
 /* ── Video tile caption ─────────────────────────────────────────
    Always visible, because a demo video is watched, not hovered. It hides on
    hover so the fuller overlay can take over without the two stacking. */
+/* Top, not bottom. Every sandbox camera burns its own name and timestamp into
+   the lower strip of the frame, so a caption at the bottom lands on top of that
+   text and neither is readable. The top strip is free apart from the LIVE pip,
+   which this sits beside. */
 .tile-caption {
   position: absolute;
-  left: 0; right: 0; bottom: 0;
-  padding: 18px 10px 8px;
-  background: linear-gradient(to top, rgba(0,0,0,0.82), transparent);
+  left: 0; right: 0; top: 0;
+  padding: 7px 10px 20px 10px;
+  background: linear-gradient(to bottom, rgba(0,0,0,0.8), transparent);
   display: flex;
   align-items: baseline;
   gap: 7px;
   pointer-events: none;
   transition: opacity 0.2s var(--ease);
 }
+/* Only the wall tile carries a LIVE pip (left) and a HERO badge (right), so
+   only it reserves the gutters. The dashboard hero has neither and would
+   otherwise indent its caption past a corner that holds nothing. */
+.video-tile .tile-caption { padding-left: 62px; padding-right: 58px; }
+
 .tile-caption-name {
   font-size: 11.5px;
   font-weight: 600;

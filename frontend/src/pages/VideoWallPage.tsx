@@ -94,10 +94,12 @@ function VideoTile({ slot, index, onMaximise, onCameraChange, cameras, isMaximis
                 alt={`Live view from ${cam.name}`}
                 onStateChange={handleState}
                 profile={profile}
-                // A wall tile is scanned, not read, and nine letterboxed feeds
-                // would spend most of the grid on black. The hero on the
-                // dashboard is the one that must show the whole frame.
-                fit="cover"
+                // Contain, not cover. The tile is already 16:9 and so is every
+                // camera on this grid, so there is nothing to letterbox in
+                // practice — while cover silently crops any feed that is not,
+                // and a wall that quietly trims the edges off a junction is
+                // showing the operator less than the camera saw.
+                fit="contain"
             />
 
             {/* Always-on caption. The hover overlay below carries the controls, but a
@@ -141,15 +143,7 @@ function VideoTile({ slot, index, onMaximise, onCameraChange, cameras, isMaximis
             </div>
 
             {slot.isHero && <div className="tile-hero-badge">HERO</div>}
-            {state === 'playing' && (
-                <div style={{
-                    position: 'absolute', top: 6, left: 6, display: 'flex', alignItems: 'center', gap: 4,
-                    background: 'rgba(0,0,0,0.6)', borderRadius: 4, padding: '2px 6px',
-                    fontSize: 10, color: 'var(--green)', fontWeight: 700, zIndex: 6,
-                }}>
-                    <div className="pulse-dot" />LIVE
-                </div>
-            )}
+            {state === 'playing' && <div className="tile-live-pip">LIVE</div>}
         </div>
     )
 }
@@ -272,7 +266,12 @@ export default function VideoWallPage() {
             }}>
                 <div
                     className={`video-wall-grid ${maximised !== null ? 'grid-1x1' : `grid-${layout}`}`}
-                    style={{ height: '100%' }}
+                    // Only the single-stream layouts are pinned to the viewport.
+                    // A multi-tile grid is sized by its tiles' 16:9, which on a
+                    // short window is taller than the scroller — height:100%
+                    // there clamped the grid to the visible area, so the second
+                    // row was clipped with nothing to scroll to.
+                    style={maximised !== null || layout === '1x1' ? { height: '100%' } : undefined}
                 >
                     {displaySlots.map((slot, i) => {
                         const realIndex = maximised !== null ? maximised : i
