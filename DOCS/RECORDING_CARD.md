@@ -6,27 +6,28 @@ you can actually glance at mid-take.
 
 ## Before you press record
 
-```
-cd backend  && python run_server_noreload.py      # NOT run_server.py
-cd frontend && npm run dev
+**These are PowerShell commands** — this project is developed on Windows, and
+the bash forms (`export VAR=…`, `$(cmd)`) fail with `CommandNotFoundException`.
+
+```powershell
+cd backend;  python run_server_noreload.py        # NOT run_server.py
+cd frontend; npm run dev
 ```
 
 Then, in a third terminal, start the indexer **and leave it running** — shot 8
 shows it alive, and an indexer started on camera looks staged:
 
-```
+```powershell
 cd backend
-export SENTINEL_WORKER_TOKEN=$(...)               # see below
+$r = Invoke-RestMethod -Uri http://127.0.0.1:8000/api/v1/auth/login -Method Post `
+     -ContentType 'application/json' `
+     -Body '{"email":"admin@sentinel.gujarat.gov.in","password":"<DEMO_ADMIN_PASSWORD>"}'
+$env:SENTINEL_WORKER_TOKEN = $r.access_token
 python anpr_worker.py --camera cam12 --camera cam14 --max-streams 2
 ```
 
-Token, if you need one:
-
-```bash
-curl -s -X POST http://127.0.0.1:8000/api/v1/auth/login \
-  -H 'Content-Type: application/json' \
-  -d '{"email":"admin@sentinel.gujarat.gov.in","password":"<DEMO_ADMIN_PASSWORD>"}'
-```
+A 401 from the worker means the token is missing or expired — re-run the two
+lines above. Note the login body is JSON, not form-encoded.
 
 - [ ] **Open the video wall a full minute early.** The gateway accepts
       connections nearly serially; tiles that are already up look instant, tiles
