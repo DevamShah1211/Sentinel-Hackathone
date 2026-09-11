@@ -71,15 +71,29 @@ def stream_url(camera: str) -> str:
             f"/stream/{camera}")
 
 
+# COCO has no auto-rickshaw class, and the detector puts them in 'truck'
+# consistently. The stored label stays 'truck' — see object_detection.py, where
+# relabelling the model's own output is argued against — but a frame shown to a
+# reviewer in Gujarat should not assert that an auto-rickshaw is a truck. So the
+# ambiguity is disclosed on the drawing only, and the index is untouched.
+DISPLAY_LABELS = {"truck": "auto-rickshaw / truck"}
+
+
 def annotate(frame, detections) -> None:
     """Draw boxes in place, for the demonstration video."""
     for d in detections:
         x1, y1, x2, y2 = d.bbox
         colour = BOX_COLOURS.get(d.category, (200, 200, 200))
         cv2.rectangle(frame, (x1, y1), (x2, y2), colour, 2)
-        label = f"{d.label} {d.confidence:.2f}"
-        cv2.putText(frame, label, (x1, max(18, y1 - 7)),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.55, colour, 2)
+        label = f"{DISPLAY_LABELS.get(d.label, d.label)} {d.confidence:.2f}"
+        # Keep the caption inside the frame: a box near the right edge pushed
+        # its text off-screen, and one at the top drew above the image.
+        scale, thick = 0.55, 2
+        (tw, th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, scale, thick)
+        tx = min(x1, frame.shape[1] - tw - 4)
+        ty = max(th + 4, y1 - 7)
+        cv2.putText(frame, label, (tx, ty),
+                    cv2.FONT_HERSHEY_SIMPLEX, scale, colour, thick)
 
 
 def run(source: str, camera_native_id: str | None, seconds: int, stride: int,
