@@ -148,16 +148,38 @@ def check(source: str, seconds: int) -> int:
         print(f"  {raw:14} -> {corrected:14} {'VALID' if ok else ''}")
 
     print()
-    if valid:
-        print("READY. This feed produces validated plates. Use it.")
-        return 0
-    if median >= MIN_PX_PER_CHAR:
-        print(f"MARGINAL. {median:.0f} px per character is enough in principle, but no")
-        print("read passed validation in this window. Try steadier framing, better")
-        print("light, or a more front-on angle.")
+
+    # Resolution decides the verdict, and it is checked FIRST.
+    #
+    # This used to return READY as soon as any read passed grammar, and only
+    # consulted pixels when nothing passed at all. That is backwards, and it
+    # failed exactly as MEASUREMENTS section 2g predicts: on a clip at 12.7 px
+    # per character the OCR read GJ23CB1539 as 6J23CB153, grammar "corrected"
+    # that to GJ23C8153 — turning a correct B into an 8 and leaving nine
+    # characters — and the tool reported VALID fifty-seven times and told the
+    # operator the feed was ready to use.
+    #
+    # Grammar can only say a string is well-formed. It cannot say it is right,
+    # and below the resolution floor the recogniser is producing a plausible
+    # shape rather than reading glyphs. So a feed that is too low-resolution is
+    # rejected no matter how many reads "passed".
+    if median < MIN_PX_PER_CHAR:
+        print(f"TOO FAR. {median:.1f} px per character; about {MIN_PX_PER_CHAR:.0f} is needed.")
+        if valid:
+            print(f"{valid} of {len(reads)} reads passed the plate grammar, but at this")
+            print("resolution a well-formed read is not evidence of a correct one —")
+            print("the recogniser returns a plausible shape, and it is confident about it.")
+        print("Get closer to the vehicle, or zoom in so the plate fills more of the frame.")
         return 1
-    print(f"TOO FAR. {median:.0f} px per character; about {MIN_PX_PER_CHAR:.0f} is needed.")
-    print("Get closer to the vehicle, or zoom in so the plate fills more of the frame.")
+
+    if valid:
+        print(f"READY. {median:.1f} px per character, {valid}/{len(reads)} reads validated.")
+        print("Spot-check one plate against the footage before you rely on it.")
+        return 0
+
+    print(f"MARGINAL. {median:.1f} px per character is enough in principle, but no")
+    print("read passed validation in this window. Try steadier framing, better")
+    print("light, or a more front-on angle.")
     return 1
 
 
