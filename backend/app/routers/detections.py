@@ -75,6 +75,14 @@ def _is_partial(raw_reads) -> bool:
     return False
 
 
+def _partial_reason(raw_reads) -> str | None:
+    """Why a read was held back, in the worker's own words, for the operator."""
+    for entry in raw_reads or []:
+        if isinstance(entry, dict) and entry.get("_meta") and entry.get("partial"):
+            return entry.get("reason")
+    return None
+
+
 class DetectionOut(BaseModel):
     id: UUID
     camera_id: UUID
@@ -423,6 +431,12 @@ async def recent_detections(principal: Principal = RequireViewer,
             "crop_uri": r[0].crop_uri,
             "camera_name": r[1],
             "department": r[2],
+            # Carried here for the same reason search carries it: a read below
+            # the resolution threshold is a lead, not an identification, and a
+            # live feed that shows it as confirmed is the failure MEASUREMENTS
+            # section 2g documents — well-formed, confident, and wrong.
+            "partial": _is_partial(r[0].raw_reads),
+            "partial_reason": _partial_reason(r[0].raw_reads),
         }
         for r in rows
     ]

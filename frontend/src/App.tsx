@@ -1,6 +1,6 @@
 import { Suspense, lazy, useCallback, useEffect, useState } from 'react'
 import { BrowserRouter, NavLink, Route, Routes, useLocation } from 'react-router-dom'
-import { Activity, BarChart2, Bell, LogOut, Map, Monitor, Search, Shield } from 'lucide-react'
+import { Activity, BarChart2, Bell, LogOut, Map, Monitor, Radio, Search, Shield } from 'lucide-react'
 import LoginPage from './pages/LoginPage'
 
 // Routes are split so the first paint does not wait on every page's
@@ -19,6 +19,7 @@ const SearchPage = lazy(() => import('./pages/SearchPage'))
 const AlertsPage = lazy(() => import('./pages/AlertsPage'))
 const WatchlistPage = lazy(() => import('./pages/WatchlistPage'))
 const HealthPage = lazy(() => import('./pages/HealthPage'))
+const LiveDetectionPage = lazy(() => import('./pages/LiveDetectionPage'))
 
 // Prefetch the rest once the first page is interactive. The operator pays no
 // wait when they navigate, but the initial render was never blocked on it.
@@ -38,6 +39,7 @@ const NAV = [
     { to: '/', label: 'Dashboard', Icon: BarChart2 },
     { to: '/map', label: 'Camera Map', Icon: Map },
     { to: '/wall', label: 'Video Wall', Icon: Monitor },
+    { to: '/live', label: 'Live Detections', Icon: Radio },
     { to: '/search', label: 'Plate Search', Icon: Search },
     { to: '/alerts', label: 'Alerts', Icon: Bell },
     { to: '/watchlist', label: 'Watchlist', Icon: Shield },
@@ -48,6 +50,7 @@ const PAGE_TITLES: Record<string, string> = {
     '/': 'Dashboard',
     '/map': 'Camera Map & GIS Registry',
     '/wall': 'Live Video Wall',
+    '/live': 'Live Detection Feed',
     '/search': 'Plate Search & Route Reconstruction',
     '/alerts': 'Live Alerts',
     '/watchlist': 'Watchlist Management',
@@ -179,6 +182,7 @@ function Shell({ user, onSignOut }: { user: AuthUser | null; onSignOut: () => vo
                         <Route path="/" element={<DashboardPage wsAlerts={alerts} />} />
                         <Route path="/map" element={<MapPage />} />
                         <Route path="/wall" element={<VideoWallPage />} />
+                        <Route path="/live" element={<LiveDetectionPage />} />
                         <Route path="/search" element={<SearchPage />} />
                         <Route path="/alerts" element={<AlertsPage wsAlerts={alerts} />} />
                         <Route path="/watchlist" element={<WatchlistPage />} />

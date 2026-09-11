@@ -80,6 +80,10 @@ export const getIngestStatus = () => api.get('/ingest/status').then(r => r.data)
 export const searchDetections = (params: Record<string, unknown>) =>
     api.get('/detections', { params }).then(r => r.data)
 export const getRecentDetections = () => api.get('/detections/recent').then(r => r.data)
+// Same endpoint, but with a cache-buster so a polling page is never served a
+// stale 304 by the browser while detections are arriving.
+export const pollRecentDetections = () =>
+    api.get('/detections/recent', { params: { _t: Date.now() } }).then(r => r.data)
 export const getPlateRoute = (plate: string, params?: Record<string, unknown>) =>
     api.get(`/detections/route/${encodeURIComponent(plate)}`, { params }).then(r => r.data)
 
