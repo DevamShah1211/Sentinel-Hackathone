@@ -44,7 +44,10 @@ services:
       SENTINEL_HOST: ${SENTINEL_HOST:-cctv.corp8.cloud}
       SENTINEL_CDN_HOST: ${SENTINEL_CDN_HOST:-cctv.corp8.cloud}
       SENTINEL_IP: ${SENTINEL_IP:-103.250.160.189}
-      CORS_ORIGINS: '["http://localhost", "http://localhost:8080"]'
+      # Hardcoding localhost meant a deployed instance rejected its own frontend:
+      # the browser sends the public origin, which was never in the list. Set
+      # CORS_ORIGINS in .env to the origin the console is actually served from.
+      CORS_ORIGINS: ${CORS_ORIGINS:-'["http://localhost", "http://localhost:8080"]'}
       EVIDENCE_CROP_DIR: /data/evidence
       DEMO_ADMIN_PASSWORD: ${DEMO_ADMIN_PASSWORD:-sentinel-demo-2026}
     volumes:
