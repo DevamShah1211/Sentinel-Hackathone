@@ -1,86 +1,88 @@
 To:      sentinel.hackathon@gujarat.gov.in
-Subject: Camera gateway unreachable after the access update — ports 8554/8889 refusing connections, cctv.corp8.cloud returning 502
+Subject: RTSP returning 401 Unauthorized for credentials that worked earlier today — cam12/cam14, account devam6205@gmail.com
 
 ------------------------------------------------------------------------
-BEFORE SENDING: replace <Your name> and <Team name>, add your team ID if
-you have one, and attach the two screenshots (VLC error, Cloudflare 502).
+BEFORE SENDING: add your team ID if you have one. No screenshots needed —
+the evidence is the port/response table below, which is reproducible.
+
+NOTE: this draft was rewritten on 11 September. The earlier version
+described ports 8554/8889 refusing connections and the portal returning
+502. That was the 8 September fault and it is NOT what is happening now:
+today every port is open and the portal returns 200, and RTSP rejects a
+credential that worked ninety minutes earlier. Do not send the old text.
 ------------------------------------------------------------------------
 
 Dear Sentinel Hackathon Support Team,
 
-Thank you for the update about the new authentication layer. We followed the instructions exactly, including clearing the Sentinel site cookies and
-cache first, but the camera feeds are not reachable from our end.
+We are reporting an authentication failure on the RTSP endpoint. This is
+different from the connectivity problem we reported on 8 September: the
+gateway is fully reachable today, and the failure is specifically a
+rejected credential.
 
-We are reporting this because the failure happens before any password is requested, so we do not think new credentials would resolve it.
+WHAT CHANGED, AND WHEN
 
-WHAT HAPPENS IN VLC (your documented method)
+This morning we ran our indexer successfully against the live grid:
 
-Using the exact URL format from your email:
+    11:03 IST   cam12 and cam14 both opened, streams delivered frames
+    11:11 IST   indexer stopped normally after an 8-minute run
+    11:31 IST   all RTSP connections now return 401 Unauthorized
 
-    rtsp://103.250.160.189:8554/stream/cam01
+Nothing changed at our end between those times. Our stored credentials
+have not been edited since 9 September, and the same username and
+password were in use for the successful 11:03 run.
 
-VLC reports:
-
-    Connection failed:
-    VLC could not connect to "103.250.160.189:8554".
-    Your input can't be opened:
-    VLC is unable to open the MRL 'rtsp://103.250.160.189:8554/stream/cam01'
-
-The same result for cam04 and cam14. VLC never reaches the username and password prompt, so the authentication step is never attempted.
-
-WHAT WE MEASURED
+WHAT WE MEASURED, JUST NOW
 
 Testing the gateway's TCP ports directly:
 
-    Port 8554 (RTSP)    Connection refused
-    Port 8889 (WebRTC)  Connection refused
-    Port 443 (HTTPS)    Open
-    Port 80 (HTTP)      Open
+    Port 8554 (RTSP)     Open
+    Port 8889 (WebRTC)   Open
+    Port 443 (HTTPS)     Open
+    Port 80  (HTTP)      Open
 
-"Connection refused" is a specific result. It means the server actively rejected the connection rather than dropping it, which indicates no service is listening on that port. A firewall block would time out silently, and a credential problem would require the connection to succeed first in order to return 401. Ports 443 and 80 on the same host accept connections normally, so the host itself is up and reachable.
+    https://cctv.corp8.cloud    HTTP 200
 
-THE WEB HOST IS ALSO AFFECTED
+So the host is up and every service is listening. The failure is at the
+authentication step, not the network:
 
-    https://cctv.corp8.cloud      HTTP 502 Bad Gateway
-    https://sentinel.gujarat.gov.in   HTTP 200 OK (working)
+    rtsp://103.250.160.189:8554/stream/cam14
+    -> method DESCRIBE failed: 401 Unauthorized
 
-The Cloudflare error page for cctv.corp8.cloud reports "You: Working", "Cloudflare Mumbai: Working", "cctv.corp8.cloud Host: Error" that is
-Cloudflare reporting the origin server behind it is not responding.
+    rtsp://103.250.160.189:8554/stream/cam12
+    -> method DESCRIBE failed: 401 Unauthorized
 
-We use cctv.corp8.cloud for the camera catalogue and the HLS proxy, so this affects our platform in addition to direct RTSP.
+A 401 on DESCRIBE means the connection succeeded and the server actively
+rejected the credential. That is the opposite of the 8 September fault,
+where the connection was refused before any credential was offered.
 
-TIMELINE (IST)
+ONE FURTHER OBSERVATION
 
-    7 Sep, 16:04   Captured 120s from cam14 successfully.
-    7 Sep, 18:09   RTSP returned 401 Unauthorized. Port 8554 still open.
-    8 Sep, 10:45   Working normally again. Swept all 30 cameras.
-    9 Sep, ~10:50  Ports 8554 and 8889 refusing connections.
-                   cctv.corp8.cloud returning 502.
+The HTTP camera-catalogue endpoint also returns an empty result for us
+today, while the portal itself serves normally on 443. We mention it only
+in case the two are related at your end; it is not our main question.
 
-The change between 8 and 9 September is notable: yesterday port 8554 was open and answered with an authentication challenge. Today it refuses the
-connection outright. That looks like a service that has been stopped or moved rather than one rejecting our credentials.
+WHAT WOULD HELP
 
-WHAT WE WOULD LIKE TO KNOW
+Simply knowing which of these is the case would be enough:
 
-  1. Is the RTSP gateway expected to remain at 103.250.160.189:8554, or has it moved behind sentinel.gujarat.gov.in as part of the update?
-     If the hostname or port has changed, please confirm the new address.
+  1. Credentials were rotated as part of a scheduled change, and new ones
+     will be issued — in which case we will wait for them.
+  2. Our account was deactivated in error, and can be restored.
+  3. This is expected during a migration and will resolve on its own.
 
-  2. Is cctv.corp8.cloud still the correct host for the camera catalogue and HLS streams? Its origin is currently returning 502.
+Any of those answers is useful to us. We can retest within minutes of a
+change at your end and confirm back to you.
 
-  3. Should we collect a new password from Resources > Live Camera access even though the connection fails before authentication? We
-     will do so if it helps, but it does not appear to be the cause.
+We would be grateful for guidance today, as the submission window closes
+on 15 September and the government-feed demonstration depends on this
+access.
 
 ACCOUNT
 
     Registered email : devam6205@gmail.com
-    Tested cameras   : cam01, cam04, cam14
-    Tested from      : VLC and directly, with the same result
-
-We are happy to test again at any time and can report back within minutes if you would like confirmation once a change is made at your end. We are
-also glad to be told this is expected during the migration and simply wait knowing that would be just as useful to us as a fix.
-
-We would be grateful for any guidance today, as the submission window is
-short.
+    Tested cameras   : cam12, cam14
+    Tested from      : our indexer and a direct RTSP client, same result
+    Last success     : 11:03 IST, 11 September 2026
 
 Kind regards,
 
