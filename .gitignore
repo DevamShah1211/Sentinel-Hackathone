@@ -47,9 +47,7 @@ frontend/shots.mjs
 # contain vehicles belonging to identifiable people.
 backend/data/plate_dataset/images/
 
-# Video working folder: the edit assets are hundreds of MB and GitHub rejects
-# blobs over 100 MB. The canonical evidence images stay tracked in DOCS/evidence.
-DOCS/evidence/Sentinel Video/
+# Video working folder: evidence images stay tracked in DOCS/evidence.
 DOCS/evidence/*.zip
 
 # Temporary scratch scripts and frame crops
