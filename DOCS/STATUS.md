@@ -100,16 +100,12 @@ confidently wrong plates in a submission video and contradict the finding above.
 
 Shot list, 8 shots, 2-3 minutes hard limit: `DEMO_SCRIPTS.md` §Video 1.
 
-### 3. Upload and verify
-
-- [ ] Both videos to YouTube as **Unlisted** — not Private, which evaluators
-      cannot open — or Drive/OneDrive set to *Anyone with the link — Viewer*
-- [ ] **Open each link in an incognito window** before pasting it anywhere
+- [x] Both videos uploaded to Google Drive: [Google Drive Folder](https://drive.google.com/drive/folders/1dfKs9nYNW_KThp3rWlwQcQxe7_c-eQca?usp=drive_link)
+- [x] Link verified and set to *Anyone with the link — Viewer*
 
 ### 4. Fill the last README links
 
-Three placeholders remain in the submission table: own-feed video,
-government-feed video, hosted instance (leave blank or omit — it is optional).
+- [x] README submission table updated with Google Drive folder link.
 
 ### 5. Submit the portal form
 

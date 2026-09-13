@@ -156,6 +156,34 @@ _OWNER_LAST = ("Patel", "Shah", "Desai", "Joshi", "Mehta", "Trivedi",
                "Chauhan", "Parmar", "Solanki", "Vyas")
 
 
+_CUSTOM_VEHICLE_OVERRIDES: dict[str, dict[str, str]] = {
+    "GJ18BF2855": {
+        "owner_name": "Devam Shah",
+        "maker_model": "Honda City ZX",
+        "vehicle_class": "Motor Car (LMV)",
+        "fuel_type": "Petrol",
+        "colour": "White",
+        "registering_authority": "RTO Gandhinagar",
+    },
+    "GJ18F2285": {
+        "owner_name": "Devam Shah",
+        "maker_model": "Honda City ZX",
+        "vehicle_class": "Motor Car (LMV)",
+        "fuel_type": "Petrol",
+        "colour": "White",
+        "registering_authority": "RTO Gandhinagar",
+    },
+    "GJ01RG1880": {
+        "owner_name": "Ramesh Patel",
+        "maker_model": "Hyundai Creta SX",
+        "vehicle_class": "Motor Car (LMV)",
+        "fuel_type": "Diesel",
+        "colour": "Black",
+        "registering_authority": "RTO Ahmedabad",
+    },
+}
+
+
 class MockVahanClient:
     """
     Deterministic synthetic register.
@@ -182,7 +210,7 @@ class MockVahanClient:
             raise VehicleNotFound(f"'{registration_number}' is not a valid registration number")
 
         seed = self._digest(plate)
-        maker, model, vehicle_class, fuels = _VEHICLE_TYPES[seed[0] % len(_VEHICLE_TYPES)]
+        maker, model, vclass, fuels = _VEHICLE_TYPES[seed[0] % len(_VEHICLE_TYPES)]
         rto_code = plate[2:4] if plate[2:4].isdigit() else "01"
 
         registration_year = 2008 + (seed[3] % 18)
@@ -192,17 +220,24 @@ class MockVahanClient:
             base = date.today().toordinal() - span_days // 2 + (seed[offset] % span_days)
             return date.fromordinal(base)
 
+        override = _CUSTOM_VEHICLE_OVERRIDES.get(plate)
+        owner_name = override["owner_name"] if override else f"{_OWNER_FIRST[seed[1] % len(_OWNER_FIRST)]} {_OWNER_LAST[seed[2] % len(_OWNER_LAST)]}"
+        maker_model = override["maker_model"] if override else f"{maker} {model}"
+        vehicle_class = override["vehicle_class"] if override else vclass
+        fuel_type = override["fuel_type"] if override else fuels[seed[7] % len(fuels)]
+        colour = override["colour"] if override else _COLOURS[seed[8] % len(_COLOURS)]
+        reg_auth = override["registering_authority"] if override else _RTO_AUTHORITIES.get(rto_code, f"RTO {rto_code}")
+
         is_blacklisted = plate in self.blacklisted
         return VehicleRecord(
             registration_number=plate,
-            owner_name=(f"{_OWNER_FIRST[seed[1] % len(_OWNER_FIRST)]} "
-                        f"{_OWNER_LAST[seed[2] % len(_OWNER_LAST)]}"),
+            owner_name=owner_name,
             vehicle_class=vehicle_class,
-            maker_model=f"{maker} {model}",
-            fuel_type=fuels[seed[7] % len(fuels)],
-            colour=_COLOURS[seed[8] % len(_COLOURS)],
+            maker_model=maker_model,
+            fuel_type=fuel_type,
+            colour=colour,
             registration_date=registered,
-            registering_authority=_RTO_AUTHORITIES.get(rto_code, f"RTO {rto_code}"),
+            registering_authority=reg_auth,
             # Never synthesise a full chassis or engine number, even fictionally.
             chassis_number_masked=f"MA{seed[9]:02X}****{seed[10]:02X}{seed[11]:02X}",
             engine_number_masked=f"{seed[12]:02X}****{seed[13]:02X}",

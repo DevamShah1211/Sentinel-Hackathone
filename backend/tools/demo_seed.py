@@ -208,13 +208,13 @@ def main() -> int:
             logger.info("Pass %d/%d complete", pass_number, args.loop)
             time.sleep(1)
 
-    print("\n" + "─" * 54)
+    print("\n" + "-" * 54)
     print(f"  video          : {video_path.name}")
     print(f"  camera         : {args.camera}")
     print(f"  plates indexed : {indexed}{'  (dry run — nothing written)' if args.dry_run else ''}")
     print(f"  alerts raised  : {alerts}")
     print(f"  rejected       : {rejected} (low confidence or invalid format)")
-    print("─" * 54 + "\n")
+    print("-" * 54 + "\n")
     return 0
 
 

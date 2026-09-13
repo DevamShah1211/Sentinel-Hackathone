@@ -232,13 +232,17 @@ class PlateDetector:
     # `max_plate_slots` is 10. The 8-slot models silently truncate an Indian plate
     # to its middle characters — measured here, GJ01AB1234 came back as '01AB123'
     # — which is worse than a low-confidence read because it looks plausible.
-    def __init__(self, detector_model: str = "yolo-v9-t-384-license-plate-end2end",
+    def __init__(self, detector_model: str = "yolo-v9-t-640-license-plate-end2end",
                  ocr_model: str = "cct-s-v2-global-model",
-                 tiled: bool = True, tile_rows: int = 2, tile_cols: int = 3,
-                 tile_scale: float = 2.0):
+                 tiled: bool = True, tile_rows: int = 3, tile_cols: int = 3,
+                 tile_scale: float = 3.0, detector_conf_thresh: float = 0.25):
         from fast_alpr import ALPR
 
-        self._alpr = ALPR(detector_model=detector_model, ocr_model=ocr_model)
+        self._alpr = ALPR(
+            detector_model=detector_model,
+            ocr_model=ocr_model,
+            detector_conf_thresh=detector_conf_thresh,
+        )
         self.tiled = tiled
         self.tile_rows = tile_rows
         self.tile_cols = tile_cols
@@ -249,8 +253,8 @@ class PlateDetector:
         # and timestamps rather than vehicles. Keyed by camera, because the
         # worker shares one detector across every stream.
         self._static_regions: dict[str, list[list]] = {}
-        logger.info("Plate detector ready (detector=%s ocr=%s tiled=%s)",
-                    detector_model, ocr_model, tiled)
+        logger.info("Plate detector ready (detector=%s ocr=%s tiled=%s rows=%d cols=%d scale=%.1f conf=%.2f)",
+                    detector_model, ocr_model, tiled, tile_rows, tile_cols, tile_scale, detector_conf_thresh)
 
     def _predict(self, image: np.ndarray):
         with self._lock:

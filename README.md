@@ -14,13 +14,12 @@ vehicle route reconstruction across cameras, and an audited output report.
 
 | Artefact | Link |
 |---|---|
-| Own-feed demo video (2–3 min) | _add before submitting_ |
-| Government-feed demo video | _add before submitting_ |
-| Output report (XLSX + PDF) | `submission/sentinel_output_report.xlsx` · `.pdf` |
-| Solution presentation (PDF) | `submission/Sentinel-PRESENTATION.pdf` |
-| Technical proposal / HLD (PDF) | `submission/Sentinel-HLD.pdf` |
-| Hosted instance | _add before submitting_ |
-| Repository | https://github.com/DevamShah1211/Sentinel-Hackathone |
+| Demonstration Videos (Own-feed & Government-feed) | [Google Drive Folder](https://drive.google.com/drive/folders/1dfKs9nYNW_KThp3rWlwQcQxe7_c-eQca?usp=drive_link) |
+| Output report (XLSX + PDF) | [`submission/sentinel_output_report.xlsx`](file:///d:/Hacathone%20CCTV/sentinel-platform/submission/sentinel_output_report.xlsx) · [`.pdf`](file:///d:/Hacathone%20CCTV/sentinel-platform/submission/sentinel_output_report.pdf) |
+| Solution presentation (PDF) | [`submission/Sentinel-PRESENTATION.pdf`](file:///d:/Hacathone%20CCTV/sentinel-platform/submission/Sentinel-PRESENTATION.pdf) |
+| Technical proposal / HLD (PDF) | [`submission/Sentinel-HLD.pdf`](file:///d:/Hacathone%20CCTV/sentinel-platform/submission/Sentinel-HLD.pdf) |
+| Hosted instance | Optional (Demonstrated live from local stack) |
+| Repository | [https://github.com/DevamShah1211/Sentinel-Hackathone](https://github.com/DevamShah1211/Sentinel-Hackathone) |
 
 ---
 

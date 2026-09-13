@@ -51,3 +51,8 @@ backend/data/plate_dataset/images/
 # blobs over 100 MB. The canonical evidence images stay tracked in DOCS/evidence.
 DOCS/evidence/Sentinel Video/
 DOCS/evidence/*.zip
+
+# Temporary scratch scripts and frame crops
+backend/scratch_*
+backend/copy_real_crops.py
+backend/fast_seed.py

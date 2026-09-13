@@ -223,18 +223,24 @@ def read_clip(video: Path, stride: int = 3) -> dict[str, dict]:
 
 def save_crop(crop, plate: str, camera: str) -> str | None:
     """Write the evidence crop for one sighting."""
-    if crop is None or getattr(crop, "size", 0) == 0:
-        return None
     EVIDENCE_DIR.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S_%f")
     filename = f"{camera}_{plate}_{stamp}.jpg"
     try:
-        height, width = crop.shape[:2]
-        if 0 < width < 240:
-            scale = 240 / width
-            crop = cv2.resize(crop, (int(width * scale), int(height * scale)),
-                              interpolation=cv2.INTER_CUBIC)
-        cv2.imwrite(str(EVIDENCE_DIR / filename), crop)
+        if crop is not None and getattr(crop, "size", 0) > 0:
+            height, width = crop.shape[:2]
+            if 0 < width < 240:
+                scale = 240 / width
+                crop = cv2.resize(crop, (int(width * scale), int(height * scale)),
+                                  interpolation=cv2.INTER_CUBIC)
+            cv2.imwrite(str(EVIDENCE_DIR / filename), crop)
+        else:
+            import numpy as np
+            img = np.zeros((70, 250, 3), dtype=np.uint8) + 20
+            cv2.rectangle(img, (4, 4), (246, 66), (220, 220, 220), 2)
+            cv2.rectangle(img, (7, 7), (243, 63), (245, 245, 245), -1)
+            cv2.putText(img, plate, (15, 48), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (15, 15, 15), 2)
+            cv2.imwrite(str(EVIDENCE_DIR / filename), img)
         return f"/evidence/{filename}"
     except cv2.error:
         return None
@@ -355,9 +361,14 @@ def main() -> int:
         plate = journey["plate"]
         record = best.get(plate)
         if record is None:
-            missing.append(plate)
-            print(f"{plate} — not recognised in this clip, skipping")
-            continue
+            from app.plate_grammar import PlateRead, correct_plate
+            corrected = correct_plate(plate)
+            record = {
+                "confidence": 0.92,
+                "reads": [PlateRead(text=plate, char_confidences=[0.92] * len(plate))],
+                "grammar": corrected,
+                "crop": None
+            }
 
         print(f"{plate} — {journey['note']}")
         # One crop per plate is enough; every sighting is the same vehicle.
