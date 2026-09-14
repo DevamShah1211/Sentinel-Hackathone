@@ -1,4 +1,4 @@
-# Indian vehicle registration codes — reference
+# Indian vehicle registration codes - reference
 
 **What this is.** The registration-code data the Sentinel recogniser uses, with
 its provenance stated per row, plus the format rules the plate grammar enforces.
@@ -7,7 +7,7 @@ its provenance stated per row, plus the format rules the plate grammar enforces.
 thirty-six states and union territories, and they change: districts are created,
 split and renumbered. This document does not claim to list them all. It states
 what is verified, what is a range without enumerated districts, and what is not
-covered — because in a system that will be used to identify vehicles, a
+covered - because in a system that will be used to identify vehicles, a
 confidently wrong district name is worse than an admitted gap.
 
 Section 5 explains how to load the complete official list when you need it.
@@ -43,7 +43,7 @@ Two variants the grammar also accepts:
 
 **Alphanumeric RTO codes.** Delhi issues codes such as `DL8C` and `DL3C`, where
 the second character of the district block is a letter by design. The grammar
-protects these explicitly — coercing that `C` into a `6` would destroy a valid
+protects these explicitly - coercing that `C` into a `6` would destroy a valid
 registration.
 
 Knowing which positions must be alphabetic and which numeric is what turns the
@@ -52,7 +52,7 @@ than guesses. That is where most of this project's ANPR accuracy comes from.
 
 ---
 
-## 2. Gujarat — complete
+## 2. Gujarat - complete
 
 All thirty-nine districts, verified against the Gujarat transport department
 listing. This is the state the deployment covers, so it is the one enumerated in
@@ -104,8 +104,8 @@ them so. `sibling_codes()` in `app/rto_codes.py` returns every code covering a
 city, and the detail panel names the city beside the district, so GJ-01 and
 GJ-27 do not read as unrelated places.
 
-The same pattern exists in every large state — Mumbai, Delhi, Bengaluru,
-Chennai and Hyderabad each hold several codes — but those groupings are not
+The same pattern exists in every large state - Mumbai, Delhi, Bengaluru,
+Chennai and Hyderabad each hold several codes - but those groupings are not
 enumerated here, for the reason in section 6.
 
 **Anything above GJ-39 has never been issued.** That is why the demonstration
@@ -123,8 +123,8 @@ enumerated here except for Gujarat.
 Confidence is stated per row, because it varies and pretending otherwise would
 be misleading:
 
-- **Verified** — small enough to confirm completely, or checked against the state listing.
-- **Range** — the state is certain and the upper bound is believed current, but districts are not enumerated and the bound may lag recent reorganisation.
+- **Verified** - small enough to confirm completely, or checked against the state listing.
+- **Range** - the state is certain and the upper bound is believed current, but districts are not enumerated and the bound may lag recent reorganisation.
 
 | Code | State / UT | Highest issued | Confidence |
 |---|---|---|---|
@@ -139,7 +139,7 @@ be misleading:
 | DL | Delhi | 17 | Verified (plus alphanumeric codes) |
 | DN | Dadra and Nagar Haveli | 9 | Verified |
 | GA | Goa | 12 | Verified |
-| **GJ** | **Gujarat** | **39** | **Verified — see section 2** |
+| **GJ** | **Gujarat** | **39** | **Verified - see section 2** |
 | HP | Himachal Pradesh | high | Range unconfirmed |
 | HR | Haryana | high | Range unconfirmed |
 | JH | Jharkhand | 24 | Range |
@@ -170,7 +170,7 @@ be misleading:
 **"Range unconfirmed" fails open.** Those states accept any district number, so
 the recogniser never rejects a genuine vehicle because our table is incomplete.
 A state code that is not in this list at all reports its district as not
-issued — `GG` is not a state, so `GG02` cannot name a real district.
+issued - `GG` is not a state, so `GG02` cannot name a real district.
 
 ---
 
@@ -187,8 +187,8 @@ split between `GJ88` and `GJ38` settle on GJ-38 Aravalli.
 
 **It does not rewrite.** An earlier version corrected an unissued district onto
 the nearest real one. Measured on the ground-truth clip, it turned `GJ96XY4455`
-into `GJ06XY4455` and `GJ97JV7219` into `GJ07JV7219` — plates every frame had
-read correctly and unanimously — and accuracy fell from 6/6 to 4/6 with two
+into `GJ06XY4455` and `GJ97JV7219` into `GJ07JV7219` - plates every frame had
+read correctly and unanimously - and accuracy fell from 6/6 to 4/6 with two
 convincing false positives. Substituting one plausible registration for another
 is the worst failure this system can produce, so the step was removed. See
 `MEASUREMENTS.md` section 2d.
@@ -238,5 +238,5 @@ would be more impressive than this and less honest, because the long tail is
 exactly where errors hide and a reviewer who finds one wrong district reasonably
 doubts the measurements too.
 
-The data that matters for a Gujarat deployment — Gujarat's own thirty-nine
-districts — is complete and verified. The rest is marked for what it is.
+The data that matters for a Gujarat deployment - Gujarat's own thirty-nine
+districts - is complete and verified. The rest is marked for what it is.

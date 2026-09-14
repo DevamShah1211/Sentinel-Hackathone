@@ -1,4 +1,4 @@
-# Training the recogniser — the assessment, and the decision
+# Training the recogniser - the assessment, and the decision
 
 **Short version.** We built the training path, ran the feasibility assessment
 against our own data, and did not train. The data cannot support it, and the
@@ -11,7 +11,7 @@ trust.
 ## 1. The question
 
 Fine-tuning the plate recogniser on Indian registrations is the obvious way to
-improve accuracy. Time was not the obstacle — twenty CPU cores can fine-tune a
+improve accuracy. Time was not the obstacle - twenty CPU cores can fine-tune a
 small OCR head in a few hours. So the question is only whether the available
 data supports it.
 
@@ -68,7 +68,7 @@ The tools are written and work today:
 # Capture real crops from a phone, webcam or NVR feed
 python tools/collect_dataset.py --source "rtsp://192.168.1.42:8554/live"
 
-# Label them — the recogniser proposes, you confirm or correct (~2s each)
+# Label them - the recogniser proposes, you confirm or correct (~2s each)
 python tools/collect_dataset.py --label
 
 # Check whether the dataset can support training
@@ -80,7 +80,7 @@ first:
 
 **Provenance is recorded, not inferred.** The first version guessed whether a
 crop was real from its filename and plate, and reported a wholly synthetic
-dataset as *81% real* — the demonstration seeder stamps camera names like
+dataset as *81% real* - the demonstration seeder stamps camera names like
 `cam01` onto crops taken from a rendered clip. A training tool whose first
 measurement flatters the data is worse than no tool, so `source` became a column
 written at capture time.

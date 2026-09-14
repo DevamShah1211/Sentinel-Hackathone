@@ -1,4 +1,4 @@
-# Sentinel — Hackathon Submission Form Answers
+# Sentinel - Hackathon Submission Form Answers
 
 Use this guide to copy-paste exact, professional responses into each field of the Google Form.
 

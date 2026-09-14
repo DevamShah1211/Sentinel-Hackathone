@@ -1,4 +1,4 @@
-# 🛡️ Sentinel CCTV Platform — Implementation Status Report
+# 🛡️ Sentinel CCTV Platform - Implementation Status Report
 **Gujarat CCTV Integration Hackathon 2026 (Model 1 + Model 2)**
 
 ---
@@ -53,7 +53,7 @@
 
 These non-code submission items are remaining for your team to finalize:
 
-### 1. 📹 Demo Video Recording (2–3 Minutes)
+### 1. 📹 Demo Video Recording (2-3 Minutes)
 Record a screen capture walkthrough of your running system (`http://localhost:5173`):
 1. **GIS Camera Map**: Show interactive map pins, department filters, and popup video feeds.
 2. **Video Wall**: Show the 2x2 or 3x3 layout with live streaming camera tiles.
@@ -63,7 +63,7 @@ Record a screen capture walkthrough of your running system (`http://localhost:51
 *Upload video as Unlisted on YouTube or Google Drive.*
 
 ### 2. 📊 Solution Presentation Deck (PPT / PDF)
-Prepare a 5–6 slide presentation:
+Prepare a 5-6 slide presentation:
 - **Slide 1**: Title, Team Details & Project Summary.
 - **Slide 2**: System Architecture Diagram (FastAPI + Supabase PostGIS + MediaMTX + ONNX ANPR + React Leaflet).
 - **Slide 3**: Model 1 Highlights (Centralized CCTV Registry, PostGIS Spatial Indexing, GeoJSON APIs).

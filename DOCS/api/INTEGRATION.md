@@ -1,6 +1,6 @@
 # Integrating with Sentinel
 
-The platform's whole surface is an HTTP API — the operator console is one client
+The platform's whole surface is an HTTP API - the operator console is one client
 of it, not a privileged path. A department that wants to push its cameras into
 the registry, pull its own detections into an existing system, or run its own
 front end can do all three against the same endpoints the console uses.
@@ -58,7 +58,7 @@ One at a time, or a CSV for a whole department.
 # Template describing every column, with an example row
 curl -s http://<host>/api/v1/cameras/bulk-import/template -H "Authorization: Bearer $TOKEN"
 
-# Validate without writing — always do this first
+# Validate without writing - always do this first
 curl -s -X POST 'http://<host>/api/v1/cameras/bulk-import?dry_run=true' \
   -H "Authorization: Bearer $TOKEN" -F file=@cameras.csv
 ```
@@ -81,7 +81,7 @@ curl -s 'http://<host>/api/v1/detections/route/GJ01KA7392?purpose=investigation&
 The route response carries each sighting's camera, coordinates, timestamp,
 confidence and evidence crop, plus the speed implied by the previous leg and an
 `impossible` flag where that speed is not physically achievable. A department
-correlating with its own data should read that flag rather than recomputing it —
+correlating with its own data should read that flag rather than recomputing it -
 the threshold and its reasoning live in one place.
 
 ### 2.3 Push detections from your own analytics
@@ -129,8 +129,8 @@ Alerts are pushed as they are raised. For systems that cannot hold a socket open
 ### 2.5 Push scene counts (vehicle / person / object detection)
 
 The analytics tier that works where ANPR cannot. MEASUREMENTS §2g records the
-finding that no camera on the sandbox grid produces a readable plate — 4 to 14
-pixels per character against the 20-30 OCR needs — while the same frames contain
+finding that no camera on the sandbox grid produces a readable plate - 4 to 14
+pixels per character against the 20-30 OCR needs - while the same frames contain
 vehicles and pedestrians a detector resolves comfortably. A department running
 its own detector can push counts here.
 
@@ -157,7 +157,7 @@ curl -s -X POST http://<host>/api/v1/analytics/scene \
 be distinguished from a camera nobody analysed, which are different operational
 states and are shown differently on the Grid Health page.
 
-Use the batch endpoint for anything more than a few buckets — one request per
+Use the batch endpoint for anything more than a few buckets - one request per
 minute per camera is 1,440 requests/camera/day and is rate-limited:
 
 ```bash
@@ -186,7 +186,7 @@ curl -s "http://<host>/api/v1/analytics/scene/hourly?hours=24" -H "$AUTH"
 curl -s "http://<host>/api/v1/analytics/scene/summary?hours=24&include_seeded=false" -H "$AUTH"
 ```
 
-Every bucket carries a `source`: `"worker"` (the default — a detector over a
+Every bucket carries a `source`: `"worker"` (the default - a detector over a
 real feed) or `"seed"` (`tools/seed_scene_analytics.py`, for demonstrations).
 The summary reports `buckets_by_source` so a client can say what its numbers
 are made of, and all three reads accept `include_seeded=false`. Provenance is a
@@ -239,7 +239,7 @@ python tools/export_openapi.py          # regenerate from the routes
 python -m pytest tests/test_security.py # 33 tests over the access rules above
 ```
 
-The security tests assert the guarantees in §1 and §4 — that privileged routes
+The security tests assert the guarantees in §1 and §4 - that privileged routes
 resolve an authenticated principal, that stream credentials are stripped, and
 that audit attribution comes from the token rather than from a request
 parameter. If an integration depends on one of those properties, the test naming

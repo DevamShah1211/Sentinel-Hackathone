@@ -25,13 +25,13 @@ Both government cameras are sited for wide-area observation. The pipeline
 recovers eight of ten characters and the Indian plate grammar correctly refuses
 them. Nothing you can do on the day changes what those sensors captured, and a
 demonstration that depends on a vehicle happening to stop near the camera can
-fail in front of the jury — a four-minute capture of cam14 returned **zero
+fail in front of the jury - a four-minute capture of cam14 returned **zero
 detections** because the junction had emptied.
 
 The playbook already anticipates this and asks for your own feed for the
 demonstration: *"a phone video of a road with a readable plate is fine,
 restreamed as RTSP."* So the live read runs on a feed you control, through the
-**identical** production pipeline — same detector, same tiled inference, same
+**identical** production pipeline - same detector, same tiled inference, same
 track-level voting, same grammar, same watchlist matching. Nothing is faked and
 nothing is special-cased. The only difference from the sandbox is the camera.
 
@@ -47,7 +47,7 @@ optics.
 
 Install an IP-camera app on the phone. Any of these work and are free:
 
-- **IP Webcam** (Android) — starts an HTTP/MJPEG server, easiest
+- **IP Webcam** (Android) - starts an HTTP/MJPEG server, easiest
 - **RTSP Camera Server** (Android)
 - **Larix Broadcaster** (Android and iOS)
 

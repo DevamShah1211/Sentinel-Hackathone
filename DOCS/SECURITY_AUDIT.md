@@ -1,4 +1,4 @@
-# Security audit — 9 September 2026
+# Security audit - 9 September 2026
 
 An audit of the backend was run against the code as submitted, and the findings
 were verified by exploiting them against a running instance rather than by
@@ -15,7 +15,7 @@ held government camera credentials and police case data.
 
 ## 1. What was wrong, and why it mattered
 
-### C1 — Sandbox credentials disclosed to anyone, unauthenticated
+### C1 - Sandbox credentials disclosed to anyone, unauthenticated
 
 `GET /api/v1/cameras/internal/streams` returned `Camera.rtsp_url` verbatim, and
 that column carries the sandbox password in its userinfo component. An
@@ -27,21 +27,21 @@ Verified by requesting it and receiving the password in full.
 
 The route's own docstring said it "sits behind service-to-service authentication"
 in a real deployment. That was true, and it was not enforced. **A comment is not
-an access control** — this is the single most useful lesson in the audit, and it
+an access control** - this is the single most useful lesson in the audit, and it
 is why every fix below is accompanied by a test rather than a note.
 
 **Fixed** by requiring state-admin authority, withholding the route from the
 schema, and stripping the credential from the response. The worker reconstructs
-it from its own configuration, which it already held — so the password never
+it from its own configuration, which it already held - so the password never
 needed to travel over HTTP at all, and sending it was gratuitous as well as
 dangerous. A leak of this response now discloses hostnames.
 
-### C2 — Authentication defaulted to off, and off meant "everyone is admin"
+### C2 - Authentication defaulted to off, and off meant "everyone is admin"
 
 `auth_enabled` defaulted to `False`, and the fallback principal returned in that
 mode carries `state_admin`. `AUTH_ENABLED` was not set in the environment, so the
 default was live: **every anonymous request was a state administrator**, and
-every RBAC guard in the codebase was a no-op — including the audit trail, plate
+every RBAC guard in the codebase was a no-op - including the audit trail, plate
 search, and route reconstruction of citizen movement.
 
 The failure was silent. The server logged a warning at startup and served
@@ -52,12 +52,12 @@ with `AUTH_ENABLED=false`, which is visible and deliberate and cannot happen by
 omission. A surveillance platform must not have a default whose failure mode is
 universal administrative access.
 
-### C3 — Watchlist and alerts had no access control at all
+### C3 - Watchlist and alerts had no access control at all
 
 Neither module imported anything from `app.security`. In consequence:
 
 - Anyone could read the full list of wanted and stolen vehicles, with case
-  references and reasons — active police case data.
+  references and reasons - active police case data.
 - Anyone could **deactivate a watchlist entry**, silently stopping a stolen
   vehicle from ever raising an alert again.
 - Anyone could acknowledge or resolve an alert.
@@ -67,10 +67,10 @@ The acknowledgement path was the sharpest: the acknowledging officer came from
 against the action. **An audit record that its own subject can author is not an
 audit record.**
 
-**Fixed** with role guards on every route — state admin for deactivation, since
-that silences an alert — and attribution taken from the authenticated principal.
+**Fixed** with role guards on every route - state admin for deactivation, since
+that silences an alert - and attribution taken from the authenticated principal.
 
-### H1 — Anyone could forge evidence
+### H1 - Anyone could forge evidence
 
 `POST /api/v1/detections` was unguarded, and the request model accepts both
 `detected_at` and `crop_uri`. Anyone could place any registration at any camera
@@ -85,15 +85,15 @@ is the evidentiary record. It was writable by anyone.
 
 **Fixed** with an operator guard; the worker authenticates with a token.
 
-### H2 / H3 — A guessable signing key and published account passwords
+### H2 / H3 - A guessable signing key and published account passwords
 
 The JWT secret was a low-entropy human-chosen string, and `role` is read from the
-token's claims — so forging a token with `"role": "state_admin"` was total
+token's claims - so forging a token with `"role": "state_admin"` was total
 compromise, with an eight-hour window. Three demonstration accounts had passwords
 hardcoded in source, one of them state admin.
 
-The two combined into something worse than either: enabling authentication — the
-fix for C2 — would have handed an attacker three known-password accounts. **The
+The two combined into something worse than either: enabling authentication - the
+fix for C2 - would have handed an attacker three known-password accounts. **The
 step that makes the system safer must not be the step that opens the door.**
 
 **Fixed.** The key is rotated to 64 random bytes and the application now refuses
@@ -101,7 +101,7 @@ to start with a default or short key while authentication is on. Demonstration
 accounts are seeded only on explicit request, with generated passwords logged
 once at creation.
 
-### H4 — Mass assignment, giving stream hijack and SSRF
+### H4 - Mass assignment, giving stream hijack and SSRF
 
 `PATCH /cameras/{id}` took an untyped `dict` and assigned any attribute the model
 happened to have. Every column was writable, including `rtsp_url`.
@@ -116,7 +116,7 @@ addresses.
 **Fixed** with an explicit `CameraUpdate` model that forbids unknown fields,
 omits the stream URLs entirely, and range-checks coordinates.
 
-### H5 / M3 — Unbounded work from unauthenticated callers
+### H5 / M3 - Unbounded work from unauthenticated callers
 
 `POST /ingest/sync` was open and spawned a background task per call, each logging
 into the sandbox and issuing rate-limited geocoder lookups per camera. Repeated
@@ -126,18 +126,18 @@ memory with no size check.
 **Fixed** with a state-admin guard and a single-flight lock on sync, and byte and
 row caps on import.
 
-### M4 — The rate limiter could be bypassed by asking it to be
+### M4 - The rate limiter could be bypassed by asking it to be
 
 The limiter keyed on `X-Forwarded-For` with no trusted-proxy check. Since that is
 a request header, a client could present a different address on every request and
-receive a fresh bucket each time — making the ten-per-minute limit on `/auth/`
+receive a fresh bucket each time - making the ten-per-minute limit on `/auth/`
 unlimited in practice, against endpoints whose passwords were the published
 constants from H3. The bucket dictionary also grew without bound.
 
 **Fixed.** Forwarded headers are honoured only from configured proxies, the
 default trusts nothing, and stale buckets are evicted.
 
-### M5 — Deleted accounts kept working
+### M5 - Deleted accounts kept working
 
 A token whose subject no longer existed fell through and built the principal from
 the token's own claims, so a deleted account retained its original privilege
@@ -165,12 +165,12 @@ that lists only faults gives a false picture of the codebase.
 - **The proxy cannot be steered.** Upstream URLs are built from configuration,
   so the SSRF that existed came in through the unguarded PATCH, not through the
   proxy itself.
-- **Login does not leak account existence** — one message for unknown email and
+- **Login does not leak account existence** - one message for unknown email and
   wrong password alike.
 - **Security headers are thorough**: `frame-ancestors 'none'`, a strict CSP,
   nosniff, HSTS, Referrer-Policy, Permissions-Policy.
 - **No stack traces reach clients.**
-- **The audit trail is real** — actor, action, object, stated purpose, case
+- **The audit trail is real** - actor, action, object, stated purpose, case
   reference and address, wired into plate search, route reconstruction and
   export, with DPDP purpose-limitation reasoning behind it.
 - **`serialise_camera` deliberately withholds stream URLs** from browser
@@ -193,7 +193,7 @@ system's contents changed:
 | `body: dict` on PATCH | Editing a demo registry | The registry drives a relay |
 
 None would have been caught by a linter or a type checker, and all three were
-introduced by someone who understood the risk — the docstrings say so. What
+introduced by someone who understood the risk - the docstrings say so. What
 closed them was checking the running system rather than reading the source.
 
 **Everything here is enforced by tests**, so the guards cannot quietly regress:

@@ -1,6 +1,6 @@
-# Sentinel — Statewide CCTV Integration Platform
+# Sentinel - Statewide CCTV Integration Platform
 
-**Gujarat CCTV Integration Hackathon 2026 · Category 1**
+**Gujarat CCTV Integration Hackathon 2026 | Category 1**
 Model 1 (Central CCTV Registry & GIS Mapping) + Model 2 (Unified Viewing Platform with ANPR & Watchlist Alerting)
 
 A working platform running against the live Sentinel sandbox grid: 30 cameras
@@ -15,7 +15,7 @@ vehicle route reconstruction across cameras, and an audited output report.
 | Artefact | Link |
 |---|---|
 | Demonstration Videos (Own-feed & Government-feed) | [Google Drive Folder](https://drive.google.com/drive/folders/1dfKs9nYNW_KThp3rWlwQcQxe7_c-eQca?usp=drive_link) |
-| Output report (XLSX + PDF) | [`submission/sentinel_output_report.xlsx`](file:///d:/Hacathone%20CCTV/sentinel-platform/submission/sentinel_output_report.xlsx) · [`.pdf`](file:///d:/Hacathone%20CCTV/sentinel-platform/submission/sentinel_output_report.pdf) |
+| Output report (XLSX + PDF) | [`submission/sentinel_output_report.xlsx`](file:///d:/Hacathone%20CCTV/sentinel-platform/submission/sentinel_output_report.xlsx) | [`.pdf`](file:///d:/Hacathone%20CCTV/sentinel-platform/submission/sentinel_output_report.pdf) |
 | Solution presentation (PDF) | [`submission/Sentinel-PRESENTATION.pdf`](file:///d:/Hacathone%20CCTV/sentinel-platform/submission/Sentinel-PRESENTATION.pdf) |
 | Technical proposal / HLD (PDF) | [`submission/Sentinel-HLD.pdf`](file:///d:/Hacathone%20CCTV/sentinel-platform/submission/Sentinel-HLD.pdf) |
 | Hosted instance | Optional (Demonstrated live from local stack) |
@@ -29,10 +29,10 @@ vehicle route reconstruction across cameras, and an audited output report.
 |---|---|
 | **Onboards** | Reads the sandbox catalogue, resolves each camera's location, records how that location was derived |
 | **Maps** | Leaflet GIS map with department, status and location-confidence layers; PostGIS geography points, GeoJSON export |
-| **Watches** | Unified video wall — 3×3 / 2×2 / 1×1, native HLS playback through an authenticated proxy |
+| **Watches** | Unified video wall - 3×3 / 2×2 / 1×1, native HLS playback through an authenticated proxy |
 | **Reads** | Continuous ANPR on live feeds with tiled inference, track-level voting and Indian plate-grammar correction |
 | **Searches** | Detection index by exact, partial and trigram-fuzzy plate |
-| **Correlates** | Watchlist matching — exact then fuzzy — on every detection, with bulk CSV import |
+| **Correlates** | Watchlist matching - exact then fuzzy - on every detection, with bulk CSV import |
 | **Alerts** | Real-time WebSocket alerts carrying reason and severity, with acknowledge/resolve workflow |
 | **Reconstructs** | Timestamped route across cameras, with speed and physically-impossible-transition flagging |
 | **Reports** | Output report as XLSX and PDF, generated from the index |
@@ -46,7 +46,7 @@ vehicle route reconstruction across cameras, and an audited output report.
 
 ```bash
 cp backend/.env.example .env    # sandbox credentials, SECRET_KEY, AUTH_ENABLED=true
-docker compose up -d --build    # console on :8080 · API on :8000
+docker compose up -d --build    # console on :8080 | API on :8000
 ```
 
 Brings up PostGIS, the API, the console behind nginx, and the continuous ANPR
@@ -55,27 +55,27 @@ indexer. Sign in with the demonstration accounts below.
 ### Or run the components directly
 
 **Prerequisites:** Python 3.11+ (3.14 works), Node 18+, and PostgreSQL 16+ with
-PostGIS. No GPU is required — all inference runs on CPU.
+PostGIS. No GPU is required - all inference runs on CPU.
 
 ```bash
-# 1 · Database
+# 1 | Database
 docker run -d --name sentinel-db -p 5432:5432 \
   -e POSTGRES_PASSWORD=sentinel postgis/postgis:16-3.4
 psql "$DATABASE_URL" -c "CREATE EXTENSION IF NOT EXISTS postgis;"
 psql "$DATABASE_URL" -c "CREATE EXTENSION IF NOT EXISTS pg_trgm;"
 
-# 2 · Backend
+# 2 | Backend
 cd backend
 pip install -r requirements.txt
 cp .env.example .env        # set DATABASE_URL and your sandbox credentials
-python run_server.py        # API on :8000 · OpenAPI docs at /api/docs
+python run_server.py        # API on :8000 | OpenAPI docs at /api/docs
 
-# 3 · Frontend
+# 3 | Frontend
 cd frontend
 npm install
 npm run dev                 # UI on :5173
 
-# 4 · ANPR indexer — start it early and leave it running
+# 4 | ANPR indexer - start it early and leave it running
 cd backend
 python anpr_worker.py --max-streams 6
 ```
@@ -84,7 +84,7 @@ The camera registry populates itself from the sandbox catalogue on first start.
 
 ### Configuration
 
-`backend/.env` — see `.env.example` for the full list:
+`backend/.env` - see `.env.example` for the full list:
 
 ```ini
 DATABASE_URL=postgresql+psycopg://user:pass@host:5432/sentinel
@@ -110,7 +110,7 @@ platform to anyone.**
 | Viewer | `viewer@sentinel.gujarat.gov.in` | `viewer-demo-2026` | Map and live viewing only |
 
 `AUTH_ENABLED` defaults to `false` so the pipeline can be demonstrated locally
-without signing in. **Set it to `true` for any deployed instance** — roles are
+without signing in. **Set it to `true` for any deployed instance** - roles are
 then enforced on every protected route.
 
 ---
@@ -120,7 +120,7 @@ then enforced on every protected route.
 The grid replays roughly twelve hours of footage per camera on a loop. An indexer
 started early has already seen every plate at every camera by the time it is
 needed, so a route renders instantly from the index instead of being processed
-live. It is also what the brief asks for — a solution that *continuously processes
+live. It is also what the brief asks for - a solution that *continuously processes
 the CCTV feeds*.
 
 ```bash
@@ -145,7 +145,7 @@ python anpr_worker.py --benchmark --duration 90 --no-tiling
 # End-to-end pipeline accuracy against known ground truth
 python tools/make_sample_feed.py --validate     # → 6/6 plates, 0 false positives
 
-# Unit tests — plate grammar, vision, VAHAN adapter
+# Unit tests - plate grammar, vision, VAHAN adapter
 python -m pytest tests/ -q                      # → 57 passed
 ```
 
@@ -158,8 +158,8 @@ Measured on a 20-core CPU with no GPU:
 | Plate candidates in a 90 s window on cam05 | **0** | **8** |
 | Ground-truth plates recovered | 3/6 | **6/6** |
 
-Full detail — including the stage-by-stage measurement of why the live grid yields
-no valid plates — is in [`DOCS/MEASUREMENTS.md`](DOCS/MEASUREMENTS.md).
+Full detail - including the stage-by-stage measurement of why the live grid yields
+no valid plates - is in [`DOCS/MEASUREMENTS.md`](DOCS/MEASUREMENTS.md).
 
 ---
 
@@ -168,18 +168,18 @@ no valid plates — is in [`DOCS/MEASUREMENTS.md`](DOCS/MEASUREMENTS.md).
 **No model was trained, and no external ANPR API is used.** Pretrained
 open-source models run locally: a YOLOv9-t plate detector and the `cct-s-v2`
 OCR. No video frame leaves the deployment, and no third-party service sits in the
-alerting path — which is the only defensible arrangement for government CCTV.
+alerting path - which is the only defensible arrangement for government CCTV.
 
 Accuracy comes from three cheap steps rather than a bigger model:
 
 1. **Tiled inference.** These cameras are wide-area PTZ overviews where a plate is
-   5–15 px wide. Full-frame inference at 384 px proposes nothing at all; overlapping
+   5-15 px wide. Full-frame inference at 384 px proposes nothing at all; overlapping
    upscaled tiles do find plate-shaped regions, and on legible footage recover 6/6
    plates against 3/6 full-frame.
-2. **Track-level voting.** A vehicle is visible for 20–60 frames. Every read votes
+2. **Track-level voting.** A vehicle is visible for 20-60 frames. Every read votes
    per character, weighted by the OCR's own per-character confidence, right-aligned
    on the four-digit serial.
-3. **Indian plate grammar.** `[2 letters][1–2 digits][1–3 letters][4 digits]`, so
+3. **Indian plate grammar.** `[2 letters][1-2 digits][1-3 letters][4 digits]`, so
    O↔0, I↔1, S↔5, B↔8, Z↔2 and G↔6 are deterministically correctable and the state
    code is validated against the RTO list.
 
@@ -201,12 +201,12 @@ backend/
     reporting.py           XLSX + PDF output report
     audit.py               audit trail
     adapters/vahan.py      contract-first VAHAN adapter (mock-backed)
-    routers/               cameras · detections · watchlist · alerts · analytics · ingest · auth
+    routers/               cameras | detections | watchlist | alerts | analytics | ingest | auth
   tools/
     make_sample_feed.py    ground-truth clip + pipeline validation
     run_indexer.ps1        detached indexer control
   tests/                   57 tests
-frontend/src/pages/        Map · VideoWall · Search · Alerts · Watchlist · Dashboard
+frontend/src/pages/        Map | VideoWall | Search | Alerts | Watchlist | Dashboard
 DOCS/
   HLD.md                   technical proposal / high-level design
   PRESENTATION.md          solution presentation content
@@ -222,14 +222,14 @@ Full interactive documentation at `http://localhost:8000/api/docs`.
 
 | Endpoint | Purpose |
 |---|---|
-| `GET /api/v1/cameras` · `/geojson` | Camera registry, with location provenance |
-| `GET /api/v1/cameras/proxy-hls/{cam}/{file}` | Authenticated HLS proxy — keeps credentials server-side |
-| `GET /api/v1/detections?plate=&fuzzy=true` | Plate search — exact, partial, fuzzy |
+| `GET /api/v1/cameras` | `/geojson` | Camera registry, with location provenance |
+| `GET /api/v1/cameras/proxy-hls/{cam}/{file}` | Authenticated HLS proxy - keeps credentials server-side |
+| `GET /api/v1/detections?plate=&fuzzy=true` | Plate search - exact, partial, fuzzy |
 | `GET /api/v1/detections/route/{plate}` | Route reconstruction with speed and flagged transitions |
-| `POST /api/v1/watchlist` · `/bulk-import` | Watchlist management |
+| `POST /api/v1/watchlist` | `/bulk-import` | Watchlist management |
 | `GET /api/v1/alerts` | Alerts, with acknowledge and resolve |
 | `WS /ws/alerts` | Live alert stream |
-| `GET /api/v1/analytics/report/xlsx` · `/pdf` | Output report |
+| `GET /api/v1/analytics/report/xlsx` | `/pdf` | Output report |
 | `GET /api/v1/analytics/vehicle/{plate}` | VAHAN vehicle particulars (mock-backed) |
 | `GET /api/v1/analytics/audit` | Audit trail |
 
@@ -240,7 +240,7 @@ Full interactive documentation at `http://localhost:8000/api/docs`.
 | Control | Implementation |
 |---|---|
 | Authentication | JWT bearer tokens; three roles enforced as a route dependency, not documentation |
-| Audit trail | Actor taken from the verified token — never a request parameter — with purpose and case reference on every search, route reconstruction and export |
+| Audit trail | Actor taken from the verified token - never a request parameter - with purpose and case reference on every search, route reconstruction and export |
 | Credentials | Environment only; masked in logs; never serialised to the browser |
 | Transport | CSP, `X-Frame-Options: DENY`, nosniff, referrer and permissions policies, HSTS |
 | CORS | Restricted to configured origins, specific methods and headers |
@@ -255,17 +255,17 @@ on the camera registry; the eleventh login attempt in a minute returns 429.
 
 ## Known limitations
 
-Stated deliberately — see [`DOCS/HLD.md`](DOCS/HLD.md) §12 for the full list.
+Stated deliberately - see [`DOCS/HLD.md`](DOCS/HLD.md) Section 12 for the full list.
 
 - **The pipeline reads no valid plates from the sandbox grid.** Measured over six
   cameras: 165 plate-shaped regions proposed, 87 OCR strings returned, **0 valid
-  Indian plates** — every candidate was roadside signage (cam05's `AEVETEE` is the
+  Indian plates** - every candidate was roadside signage (cam05's `AEVETEE` is the
   "ADVERTISE HERE" billboard), correctly rejected by the grammar validator. These
-  are wide-area night-time PTZ overviews where a plate is 5–15 px wide. The same
+  are wide-area night-time PTZ overviews where a plate is 5-15 px wide. The same
   pipeline recovers **6/6** plates on footage where they are legible, so the limit
   is camera siting rather than the software. Stage-by-stage figures in
-  [`DOCS/MEASUREMENTS.md`](DOCS/MEASUREMENTS.md) §2a.
-- **Camera coordinates are geocoded, not surveyed** — accurate to the named site,
+  [`DOCS/MEASUREMENTS.md`](DOCS/MEASUREMENTS.md) Section 2a.
+- **Camera coordinates are geocoded, not surveyed** - accurate to the named site,
   not to the pole. Every camera records `geo_source` and `geo_confidence`.
 - **Department attribution is inferred** from the site type in the camera name and
   is labelled as inferred wherever shown.
@@ -273,17 +273,17 @@ Stated deliberately — see [`DOCS/HLD.md`](DOCS/HLD.md) §12 for the full list.
   interpolation returned separately, never presented as evidence.
 - **VAHAN integration is contract-first and mock-backed.** Every response says
   `source: "mock"` and `is_authoritative: false`.
-- **Single-node prototype** — no HA or DR. The scale-out path is designed in the
+- **Single-node prototype** - no HA or DR. The scale-out path is designed in the
   HLD, not implemented.
 
 ---
 
 ## Documentation
 
-- [`DOCS/HLD.md`](DOCS/HLD.md) — technical proposal: architecture, integration,
+- [`DOCS/HLD.md`](DOCS/HLD.md) - technical proposal: architecture, integration,
   analytics, scaling arithmetic, security, limitations
-- [`DOCS/PRESENTATION.md`](DOCS/PRESENTATION.md) — solution presentation content
-- [`DOCS/MEASUREMENTS.md`](DOCS/MEASUREMENTS.md) — every measured number and how to
+- [`DOCS/PRESENTATION.md`](DOCS/PRESENTATION.md) - solution presentation content
+- [`DOCS/MEASUREMENTS.md`](DOCS/MEASUREMENTS.md) - every measured number and how to
   reproduce it
-- [`DOCS/Sentinel-Sprint-Playbook.md`](DOCS/Sentinel-Sprint-Playbook.md) — the sprint plan
-- [`DOCS/statewide-cctv-technical-document.md`](DOCS/statewide-cctv-technical-document.md) — companion Tech Doc
+- [`DOCS/Sentinel-Sprint-Playbook.md`](DOCS/Sentinel-Sprint-Playbook.md) - the sprint plan
+- [`DOCS/statewide-cctv-technical-document.md`](DOCS/statewide-cctv-technical-document.md) - companion Tech Doc

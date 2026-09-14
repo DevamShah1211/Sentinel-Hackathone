@@ -1,4 +1,4 @@
-# Sentinel — Hackathon Submission Package
+# Sentinel - Hackathon Submission Package
 **Gujarat CCTV Integration Hackathon 2026 · Category 1**
 **Team / Repository**: [DevamShah1211/Sentinel-Hackathone](https://github.com/DevamShah1211/Sentinel-Hackathone)
 

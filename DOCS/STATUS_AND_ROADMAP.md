@@ -1,4 +1,4 @@
-# Sentinel — Status and Roadmap
+# Sentinel - Status and Roadmap
 
 **Gujarat CCTV Integration Hackathon 2026 · Category 1 · Model 1 + Model 2**
 Snapshot taken Saturday 5 September 2026, 19:50 IST. Submission closes **Sunday 7 September, 14:00**.
@@ -14,7 +14,7 @@ Nothing is projected unless it says so.
 
 ---
 
-## Part A — What is done
+## Part A - What is done
 
 ### A.1 Model 1: Central CCTV Registry and GIS Mapping
 
@@ -47,7 +47,7 @@ centroid, or `None` when nothing could be justified.
 | Plate search: exact, partial, fuzzy (`pg_trgm`) | Done | `backend/app/routers/detections.py` |
 | Route reconstruction with OSRM snapping and impossible-transition flags | Done | `/api/v1/detections/route/{plate}` |
 | Watchlist with alert workflow (new → acknowledged → closed) | Done | `backend/app/routers/watchlist.py`, `alerts.py` |
-| **Partial reads** — searchable, badged, never alertable | Done 5 Sept 19:45 | `backend/tools/index_partial_reads.py` |
+| **Partial reads** - searchable, badged, never alertable | Done 5 Sept 19:45 | `backend/tools/index_partial_reads.py` |
 | VAHAN adapter: contract, mock implementation, credential notes | Done | `backend/app/adapters/vahan.py`, HLD §10 |
 | XLSX and PDF output report | Done | `/api/v1/analytics/report/xlsx`, `/report/pdf` |
 | Audit trail: every search recorded with purpose and actor | Done | `audit_log` table |
@@ -84,23 +84,23 @@ Full detail, with reproduction commands, is in `DOCS/MEASUREMENTS.md`.
 
 ---
 
-## Part B — What is left
+## Part B - What is left
 
 Ordered by what unblocks what. Items marked **person** cannot be done by the
 assistant; they need a human with the accounts.
 
-### B.1 Before submission — required
+### B.1 Before submission - required
 
 | # | Task | Who | Notes |
 |---|---|---|---|
 | 1 | **Push to GitHub** | person | `git push origin main` from your own terminal, signed in as `DevamShah1211`. The first ten commits of the day are already on GitHub; only the commits made after 19:45 remain to push. |
-| 2 | **Rotate the sandbox password** | person | The sandbox password is public in the repository's early history (six commits, first `851b572`) and still works — confirmed 8 September. Call +91 95370 89982 or write to sentinel.hackathon@gujarat.gov.in. Do this before the repository is reviewed. |
-| 3 | **Record Video 1** (own feed, 2–3 min) | person | Follow `DEMO_SCRIPTS.md`. Seed first with `python tools/seed_demo_route.py --reset`. Six distinct routes; GJ01KA7392 ends 263 km away 79 minutes later, flagged as an impossible transition. |
+| 2 | **Rotate the sandbox password** | person | The sandbox password is public in the repository's early history (six commits, first `851b572`) and still works - confirmed 8 September. Call +91 95370 89982 or write to sentinel.hackathon@gujarat.gov.in. Do this before the repository is reviewed. |
+| 3 | **Record Video 1** (own feed, 2-3 min) | person | Follow `DEMO_SCRIPTS.md`. Seed first with `python tools/seed_demo_route.py --reset`. Six distinct routes; GJ01KA7392 ends 263 km away 79 minutes later, flagged as an impossible transition. |
 | 4 | **Record Video 2** (government feed) | person | Shot 14 is cam12. Run `python tools/index_partial_reads.py --live 100 --camera cam12` while a truck is in the lane, then search the voted plate with fuzzy on. |
 | 5 | **Export HLD and presentation to PDF** | person | Any Markdown-to-PDF tool; keep the tables. |
 | 6 | **Deploy a reachable instance** | person | `docker compose up`. Set `AUTH_ENABLED=true`, change `SECRET_KEY` and `DEMO_ADMIN_PASSWORD`. |
 | 7 | **Fill links into README.md** and submit the portal form | person | Repository, deployed URL, both videos, PDFs. |
-| 8 | ~~Send the gateway email~~ **Done and answered** | — | Sent; reply filed at `DOCS/reply_from_sentinel_support.txt`. The organisers confirm there is no prescribed RTSP limit and attribute the serial-connection behaviour to the sandbox gateway. |
+| 8 | ~~Send the gateway email~~ **Done and answered** | - | Sent; reply filed at `DOCS/reply_from_sentinel_support.txt`. The organisers confirm there is no prescribed RTSP limit and attribute the serial-connection behaviour to the sandbox gateway. |
 
 ### B.2 Engineering that would strengthen the submission, if time allows
 
@@ -123,7 +123,7 @@ These are stated in the HLD and should not be hidden in the demo:
 
 ---
 
-## Part C — How to scale further
+## Part C - How to scale further
 
 The HLD §9 makes the architectural argument. This section is the engineering
 sequence: what to change, in what order, and at what camera count each change
@@ -145,19 +145,19 @@ the core. We reproduced the failure at small scale: the shared sandbox gateway
 fell over at eight streams while our machine sat at 4 % CPU. The bottleneck is
 always the shared path, never the compute.
 
-### C.2 Stage 1 — one district, up to ~500 cameras
+### C.2 Stage 1 - one district, up to ~500 cameras
 
 What the current code does with configuration changes, not rewrites.
 
 1. **Run the relay and the ANPR worker on a district node**, not the core. Both already take a camera list and speak only HTTP to the core. Point them at the local NVRs.
-2. **Tier the cameras.** Tag each camera `anpr_continuous`, `anpr_on_event` or `view_only`. The worker already selects by list; add the tag as the selector. With tiled inference at ~26 streams per 20-core machine, one node runs continuous ANPR on the ~5–10 % of cameras that are toll plazas, checkposts and highway gantries. That is exactly the cam12 finding turned into policy.
+2. **Tier the cameras.** Tag each camera `anpr_continuous`, `anpr_on_event` or `view_only`. The worker already selects by list; add the tag as the selector. With tiled inference at ~26 streams per 20-core machine, one node runs continuous ANPR on the ~5-10 % of cameras that are toll plazas, checkposts and highway gantries. That is exactly the cam12 finding turned into policy.
 3. **Partition the detections table by month.** PostgreSQL native partitioning; the `pg_trgm` GIN index is created per partition. Search code is unchanged.
 4. **Store crops in object storage** (MinIO on the node, S3-compatible), not local disk. `crop_uri` is already a URI.
 5. **Replace the in-process WebSocket alert fan-out with NATS.** One subject per department. The alert router publishes; the frontend gateway subscribes. This is the first change that needs a new component.
 
 Expected outcome: one node, ~500 registered cameras, ~25 under continuous ANPR, all searchable from the state console, no raw video leaving the district.
 
-### C.3 Stage 2 — one region, ~5,000 to 10,000 cameras
+### C.3 Stage 2 - one region, ~5,000 to 10,000 cameras
 
 1. **Regional PostgreSQL shard per commissionerate**, each holding its own detections and cameras. The core holds the registry and the watchlist only.
 2. **Scatter-gather search.** A federation service fans a plate query out to every shard, merges by `similarity()` and time. Route reconstruction runs on the merged set; the existing route code takes a list of sightings and does not care where they came from.
@@ -165,7 +165,7 @@ Expected outcome: one node, ~500 registered cameras, ~25 under continuous ANPR, 
 4. **Server-side map clustering.** Return grid-cell counts below a zoom threshold and individual cameras above it. Mandatory here; the browser cannot hold 10,000 markers.
 5. **Health sampling as a job**, one per node, writing to a rolling table. The dashboard reads the table, never probes cameras.
 
-### C.4 Stage 3 — statewide, ~80,000 cameras
+### C.4 Stage 3 - statewide, ~80,000 cameras
 
 1. **Thirty-three district nodes** (one per district, sized to their tier-1 count) reporting to a small number of regional shards.
 2. **Storage tiering.** Hot NVMe for the last 7 days of crops and metadata on the node, warm object storage for 90 days at the region, cold archive beyond. Video itself stays on departmental NVRs under existing retention rules; the platform fetches clips on demand through the same proxy path the prototype uses today.
@@ -175,9 +175,9 @@ Expected outcome: one node, ~500 registered cameras, ~25 under continuous ANPR, 
 
 | Tier | Share of estate | Workload |
 |---|---|---|
-| Tier 1 — ANPR continuous | ~5–10 % | Tiled ANPR, always on: highways, border posts, toll plazas |
-| Tier 2 — event-triggered | ~20–30 % | Analytics on motion or on demand: urban junctions |
-| Tier 3 — registry and view | ~60–75 % | Recording and live view only |
+| Tier 1 - ANPR continuous | ~5-10 % | Tiled ANPR, always on: highways, border posts, toll plazas |
+| Tier 2 - event-triggered | ~20-30 % | Analytics on motion or on demand: urban junctions |
+| Tier 3 - registry and view | ~60-75 % | Recording and live view only |
 
 At 80,000 cameras, tier 1 is 4,000 to 8,000 streams. At ~26 tiled streams per
 machine that is roughly 150 to 300 analytics machines statewide, spread across
@@ -189,7 +189,7 @@ The prototype's accuracy comes from voting and grammar, not from the model, and
 that is where the remaining gains are:
 
 1. **Two-row plate splitting** (B.2 above). Most commercial vehicles in Gujarat carry two-row plates. This is the difference between "partial" and "valid" on cam12.
-2. **Camera-specific tiling.** Tile geometry is fixed at 2×3 today. A per-camera region of interest, drawn once on the map page, cuts inference cost by 3–5× on cameras where the road occupies a strip of the frame.
+2. **Camera-specific tiling.** Tile geometry is fixed at 2×3 today. A per-camera region of interest, drawn once on the map page, cuts inference cost by 3-5× on cameras where the road occupies a strip of the frame.
 3. **Bharat series and older formats** are already in the grammar; add state-specific RTO code tables so `state_valid` becomes `rto_valid`.
 4. **A better model, if one is wanted later**, plugs into `PlateDetector` behind the same interface. The constraint stays: CPU, on-premise, nothing leaves the deployment.
 
