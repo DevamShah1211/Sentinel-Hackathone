@@ -194,5 +194,3 @@ To prevent centralized network backhaul saturation (192 Gbps raw video bottlenec
 - **Enforcement**: Logs user ID, role, client IP, action type (`SEARCH`, `ROUTE_RECONSTRUCT`, `EXPORT`), timestamp, and explicit **stated legal purpose**.
 
 ---
-
-*Generated for Gujarat CCTV Integration Hackathon 2026 submission package.*
