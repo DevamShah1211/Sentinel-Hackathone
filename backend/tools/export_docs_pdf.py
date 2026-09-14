@@ -36,6 +36,7 @@ TARGETS = {
     "HLD": (DOCS / "HLD.md", "Sentinel — High Level Design"),
     "PRESENTATION": (DOCS / "PRESENTATION.md", "Sentinel — Solution Presentation"),
     "MEASUREMENTS": (DOCS / "MEASUREMENTS.md", "Sentinel — Measurements"),
+    "WORKFLOW-DIAGRAM": (DOCS / "WORKFLOW_DIAGRAM.md", "Sentinel — Workflow & Integration Diagram"),
 }
 
 # Print stylesheet. Serif for body because these are read as documents, mono for
@@ -173,7 +174,7 @@ def main() -> int:
                         help="Render just this document; repeatable")
     args = parser.parse_args()
 
-    names = args.only or ["HLD", "PRESENTATION"]
+    names = args.only or ["HLD", "PRESENTATION", "WORKFLOW-DIAGRAM"]
     OUT.mkdir(parents=True, exist_ok=True)
 
     for name in names:

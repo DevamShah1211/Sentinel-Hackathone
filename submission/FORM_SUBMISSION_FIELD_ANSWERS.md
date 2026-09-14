@@ -67,6 +67,7 @@ https://drive.google.com/drive/folders/1dfKs9nYNW_KThp3rWlwQcQxe7_c-eQca?usp=dri
 
 ### Workflow / Integration Diagram Link *
 https://drive.google.com/drive/folders/1dfKs9nYNW_KThp3rWlwQcQxe7_c-eQca?usp=drive_link
+(Or Direct PDF Link: https://raw.githubusercontent.com/DevamShah1211/Sentinel-Hackathone/main/submission/Sentinel-WORKFLOW-DIAGRAM.pdf)
 
 ### Screenshots Folder Link
 https://drive.google.com/drive/folders/1dfKs9nYNW_KThp3rWlwQcQxe7_c-eQca?usp=drive_link
