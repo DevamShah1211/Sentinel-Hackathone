@@ -52,12 +52,14 @@ body {
 h1, h2, h3, h4 {
   font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
   color: #0b1f3a; line-height: 1.25; margin: 1.1em 0 0.45em;
+  page-break-after: avoid; break-after: avoid;
+  page-break-inside: avoid; break-inside: avoid;
 }
 h1 { font-size: 20pt; border-bottom: 2px solid #0b1f3a; padding-bottom: 6px; }
 h2 { font-size: 14.5pt; border-bottom: 1px solid #c9d3e0; padding-bottom: 4px; }
 h3 { font-size: 12pt; }
 h4 { font-size: 10.5pt; letter-spacing: 0.02em; }
-p { margin: 0.55em 0; }
+p, li { margin: 0.55em 0; orphans: 3; widows: 3; }
 code {
   font-family: "Consolas", "SF Mono", monospace;
   font-size: 9pt; background: #eef2f7; padding: 1px 4px; border-radius: 3px;
@@ -65,29 +67,26 @@ code {
 pre {
   background: #f5f7fa; border: 1px solid #dbe3ed; border-left: 3px solid #2f6ee0;
   border-radius: 4px; padding: 9px 11px; overflow-x: auto;
-  page-break-inside: avoid;
 }
 pre code { background: none; padding: 0; font-size: 8.5pt; line-height: 1.42; }
 table {
   border-collapse: collapse; width: 100%; margin: 0.8em 0;
-  font-size: 9pt; page-break-inside: avoid;
+  font-size: 9pt;
 }
+tr { page-break-inside: avoid; break-inside: avoid; }
 th, td { border: 1px solid #cbd5e1; padding: 5px 8px; text-align: left; vertical-align: top; }
 th { background: #eef2f7; font-weight: 650; }
 tr:nth-child(even) td { background: #fafbfd; }
 blockquote {
   margin: 0.7em 0; padding: 6px 14px;
   border-left: 3px solid #94a3b8; background: #f7f9fc; color: #33415c;
+  page-break-inside: avoid; break-inside: avoid;
 }
 hr { border: none; border-top: 1px solid #d6dee8; margin: 1.4em 0; }
 a { color: #1d4ed8; text-decoration: none; }
 img { max-width: 100%; }
 ul, ol { margin: 0.5em 0; padding-left: 1.5em; }
 li { margin: 0.22em 0; }
-.doc-footer {
-  margin-top: 2em; padding-top: 8px; border-top: 1px solid #d6dee8;
-  font-size: 8.5pt; color: #64748b;
-}
 """
 
 SLIDE_CSS = "h2 { page-break-before: always; }\nh1 + h2 { page-break-before: avoid; }"
@@ -104,12 +103,10 @@ def to_html(md_path: Path, title: str, slide_breaks: bool) -> str:
         extensions=["tables", "fenced_code", "toc", "sane_lists", "attr_list"],
     )
     css = CSS + (SLIDE_CSS if slide_breaks else "")
-    footer_html = "" if slide_breaks else f'<div class="doc-footer">{title} · Gujarat CCTV Integration Hackathon 2026</div>'
     return f"""<!doctype html>
 <html><head><meta charset="utf-8"><title>{title}</title>
 <style>{css}</style></head>
 <body>{body}
-{footer_html}
 </body></html>"""
 
 
