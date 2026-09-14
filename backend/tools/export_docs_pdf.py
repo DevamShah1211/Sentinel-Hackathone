@@ -97,7 +97,7 @@ def to_html(md_path: Path, title: str, slide_breaks: bool) -> str:
     # Inline images as base64 so they render in headless browser (file:// has no relative resolution)
     import base64, mimetypes as _mt
     def _inline_img(m: "re.Match[str]") -> str:
-        src = m.group(1)
+        tag, src = m.group(1), m.group(2)
         # Try resolving relative to the markdown file's directory first, then ROOT
         for base in (md_path.parent, ROOT):
             candidate = (base / src).resolve()
@@ -105,10 +105,11 @@ def to_html(md_path: Path, title: str, slide_breaks: bool) -> str:
                 mime, _ = _mt.guess_type(str(candidate))
                 mime = mime or "image/png"
                 data = base64.b64encode(candidate.read_bytes()).decode()
-                return f'<img src="data:{mime};base64,{data}"'
+                return f'{tag}src="data:{mime};base64,{data}"'
         return m.group(0)  # leave unchanged if not found
 
-    body = re.sub(r'<img src="([^"]+)"', _inline_img, body)
+    # markdown renders: <img alt="..." src="PATH"> — src can be anywhere in the tag
+    body = re.sub(r'(<img\s[^>]*?)src="([^"]+)"', _inline_img, body)
 
     css = CSS + (SLIDE_CSS if slide_breaks else "")
     return f"""<!doctype html>
