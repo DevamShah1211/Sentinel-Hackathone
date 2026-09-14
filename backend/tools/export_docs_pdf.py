@@ -77,7 +77,22 @@ ul, ol { margin: 0.4em 0; padding-left: 1.4em; }
 li { margin: 0.18em 0; }
 """
 
-SLIDE_CSS = "h2 { page-break-before: always; }\nh1 + h2 { page-break-before: avoid; }"
+SLIDE_CSS = """
+h1 { font-size: 20pt; }
+h2 {
+  font-size: 14pt;
+  margin-top: 1.6em;
+  color: #0b1f3a;
+  border-bottom: 2px solid #2f6ee0;
+  padding-bottom: 4px;
+}
+hr {
+  border: none;
+  border-top: 3px solid #2f6ee0;
+  margin: 1.8em 0 1.2em;
+  page-break-after: avoid;
+}
+"""
 
 
 def to_html(md_path: Path, title: str, slide_breaks: bool) -> str:
