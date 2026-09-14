@@ -33,10 +33,10 @@ DOCS = ROOT / "DOCS"
 OUT = ROOT / "submission"
 
 TARGETS = {
-    "HLD": (DOCS / "HLD.md", "Sentinel — High Level Design"),
-    "PRESENTATION": (DOCS / "PRESENTATION.md", "Sentinel — Solution Presentation"),
-    "MEASUREMENTS": (DOCS / "MEASUREMENTS.md", "Sentinel — Measurements"),
-    "WORKFLOW-DIAGRAM": (DOCS / "WORKFLOW_DIAGRAM.md", "Sentinel — Workflow & Integration Diagram"),
+    "HLD": (DOCS / "HLD.md", "Sentinel: High Level Design"),
+    "PRESENTATION": (DOCS / "PRESENTATION.md", "Sentinel: Solution Presentation"),
+    "MEASUREMENTS": (DOCS / "MEASUREMENTS.md", "Sentinel: Measurements"),
+    "WORKFLOW-DIAGRAM": (DOCS / "WORKFLOW_DIAGRAM.md", "Sentinel: Workflow & Integration Diagram"),
 }
 
 # Print stylesheet. Serif for body because these are read as documents, mono for
@@ -96,9 +96,7 @@ SLIDE_CSS = "h2 { page-break-before: always; }\nh1 + h2 { page-break-before: avo
 def to_html(md_path: Path, title: str, slide_breaks: bool) -> str:
     text = md_path.read_text(encoding="utf-8")
 
-    # Mermaid fences would render as a wall of unreadable source in a PDF, and
-    # the diagrams they describe are restated in prose in both documents.
-    text = re.sub(r"```mermaid.*?```", "_[diagram — see the repository]_",
+    text = re.sub(r"```mermaid.*?```", "_[diagram: see the repository]_",
                   text, flags=re.S)
 
     body = markdown.markdown(
@@ -106,12 +104,12 @@ def to_html(md_path: Path, title: str, slide_breaks: bool) -> str:
         extensions=["tables", "fenced_code", "toc", "sane_lists", "attr_list"],
     )
     css = CSS + (SLIDE_CSS if slide_breaks else "")
+    footer_html = "" if slide_breaks else f'<div class="doc-footer">{title} · Gujarat CCTV Integration Hackathon 2026</div>'
     return f"""<!doctype html>
 <html><head><meta charset="utf-8"><title>{title}</title>
 <style>{css}</style></head>
 <body>{body}
-<div class="doc-footer">{title} · generated from {md_path.name} ·
-Gujarat CCTV Integration Hackathon 2026</div>
+{footer_html}
 </body></html>"""
 
 

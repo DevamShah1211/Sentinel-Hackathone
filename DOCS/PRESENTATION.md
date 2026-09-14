@@ -1,8 +1,10 @@
 # SENTINEL
 ### Statewide CCTV Integration Platform & ANPR Surveillance Engine
 
-**Gujarat CCTV Integration Hackathon 2026** | **Category 1 (Academic / Research / Startup)**  
-**Team Name**: KodeMatrix | **Track**: Model 1 (Central CCTV Registry & GIS Mapping) + Model 2 (Unified Viewing Platform & ANPR Alerting)
+- **Event**: Gujarat CCTV Integration Hackathon 2026
+- **Category**: Category 1 (Academic / Research / Startup)
+- **Team Name**: KodeMatrix
+- **Track Scope**: Model 1 (Central CCTV Registry & GIS Mapping) + Model 2 (Unified Viewing Platform & ANPR Alerting)
 
 > A production-grade platform running against the live Sentinel sandbox grid: 30 cameras onboarded and mapped, a continuous ANPR pipeline validated at 100% on legible footage, real-time watchlist alerting, and timestamped route reconstruction across cameras.
 
@@ -263,10 +265,3 @@ Restricting WAN backhaul to metadata, alerts, and requested video clips reduces 
 | Ingest & Provenance Endpoint | `GET /api/v1/ingest/status` |
 | Audit Trail API | `GET /api/v1/analytics/audit` |
 | Interactive OpenAPI Docs | `http://localhost:8000/api/docs` |
-
-**Team**: KodeMatrix  
-**Repository**: `https://github.com/DevamShah1211/Sentinel-Hackathone`  
-**Video Evidence**: Google Drive Folder & `DOCS/evidence/Sentinel Video/`  
-**Hosted Prototype**: `http://localhost:8000` (Backend) | `http://localhost:5173` (Frontend)
-
-Every measurement in this presentation is fully reproducible via scripts in `DOCS/MEASUREMENTS.md`.

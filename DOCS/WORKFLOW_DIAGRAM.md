@@ -2,6 +2,7 @@
 ## Technical Workflow & Integration Diagram Specification
 
 **Gujarat CCTV Integration Hackathon 2026** | **Category 1 (Academic / Research / Startup)**  
+**Team Name**: KodeMatrix  
 **Document**: Workflow & Integration Diagram Specification  
 **Project**: Sentinel: Statewide CCTV Integration & ANPR Surveillance Engine  
 **Repository**: [DevamShah1211/Sentinel-Hackathone](https://github.com/DevamShah1211/Sentinel-Hackathone)
