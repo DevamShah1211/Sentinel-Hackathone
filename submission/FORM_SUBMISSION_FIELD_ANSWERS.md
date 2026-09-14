@@ -4,7 +4,10 @@ Use this guide to copy-paste exact, professional responses into each field of th
 
 ---
 
-## 1. Project Description
+## 1. Project & Team Information
+
+### Team Name *
+KodeMatrix
 
 ### Proposed Solution *
 Sentinel is an integrated Statewide CCTV Management & ANPR Surveillance Platform. It ingests live RTSP camera feeds across Gujarat, maps 30 camera nodes on an interactive GIS map, performs continuous license plate detection using YOLOv9 & fast-alpr with Indian plate-grammar correction, enforces real-time watchlist alert notifications via WebSockets, reconstructs vehicle travel routes across camera locations, and provides audited XLSX/PDF evidence exports.

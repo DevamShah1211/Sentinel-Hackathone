@@ -2,11 +2,9 @@
 ### Statewide CCTV Integration Platform & ANPR Surveillance Engine
 
 **Gujarat CCTV Integration Hackathon 2026** | **Category 1 (Academic / Research / Startup)**  
-**Team**: Sentinel | **Track**: Model 1 (Central CCTV Registry & GIS Mapping) + Model 2 (Unified Viewing Platform & ANPR Alerting)
+**Team Name**: KodeMatrix | **Track**: Model 1 (Central CCTV Registry & GIS Mapping) + Model 2 (Unified Viewing Platform & ANPR Alerting)
 
 > A production-grade platform running against the live Sentinel sandbox grid: 30 cameras onboarded and mapped, a continuous ANPR pipeline validated at 100% on legible footage, real-time watchlist alerting, and timestamped route reconstruction across cameras.
-
-**Speaker Note:** Open on the result, not the introduction. One sentence: "Hand us a registration number and we will show you where that vehicle has been across the grid, with timestamps, because we have been indexing continuously since Thursday."
 
 ---
 
@@ -29,8 +27,6 @@
 | Real-Time Alerts | Low-latency WebSocket alert dispatch with watchlist severity levels |
 | Route Reconstruction | Interactive map timeline of vehicle sightings with speed estimation |
 | Complete Auditability | Purpose-bound audit logging for every citizen search and evidence export |
-
-**Speaker Note:** The auditability row is the one most teams skip and the one government evaluators value most.
 
 ---
 
@@ -61,8 +57,6 @@ ANPR WORKER                    REACT + LEAFLET UI
 
 **Architectural Discipline:** Kafka, Elasticsearch, and Kubernetes were deliberately omitted at this scale because PostgreSQL handles all indexing cleanly. The scale-out path for 80,000 cameras is fully designed and documented in Section 9 of the HLD.
 
-**Speaker Note:** Restraint is a competence signal. HLD Section 9 demonstrates exactly where each scale-out component enters the design.
-
 ---
 
 ## Slide 4: Model 1 - Registry & GIS Mapping
@@ -82,8 +76,6 @@ The sandbox catalogue publishes **only `id` and `name`**: no coordinates, no dep
 We did not invent arbitrary coordinates. An initial arithmetic grid approach placed Junagadh cameras in Surat; that was removed. Unlocatable cameras are reported transparently as unlocated.
 
 **GIS Capabilities:** PostGIS geography points, GeoJSON export, department / status / confidence map layers, clustered markers, and click-through to live video tiles.
-
-**Speaker Note:** Cameras sit in their real districts (Junagadh, Rajkot, Navsari, Kutch), allowing evaluators to verify names directly against the map.
 
 ---
 
@@ -108,8 +100,6 @@ Pretrained open-source models (YOLOv9-t detector, cct-s-v2 OCR) executing on **l
 **Live Sandbox Feed Findings:** 29 of 30 cameras are wide-area PTZ overviews yielding only roadside signage (correctly rejected). **cam12 (Adalaj Toll Naka)** is a toll plaza feed: the pipeline detected a real truck plate **25 times in 100 seconds**, recovering 8 of 10 characters at 5 px/character. Seven preprocessing variants confirmed that upscaling cannot restore detail missing from optics.
 
 > **The constraint is optics, not software** (see Slide 10).
-
-**Speaker Note:** If asked whether we trained a custom model, highlight that post-processing and track voting outperform retraining while maintaining zero deployment overhead.
 
 ---
 
@@ -136,8 +126,6 @@ ANPR is not a uniform per-camera cost. It is a **policy choice regarding which c
 | Tier 2: Event-Triggered | 20-30% | Urban junctions (motion / signal triggered) |
 | Tier 3: Registry & View | 60-75% | Full video coverage without analytics compute cost |
 
-**Speaker Note:** Presenting measured throughput for both modes demonstrates deep engineering evaluation rather than idealized projections.
-
 ---
 
 ## Slide 7: Correlation, Alerting & Route Reconstruction
@@ -160,8 +148,6 @@ Sightings ordered chronologically → great-circle distance & elapsed time calcu
 
 Flagged transitions notify investigators of potential plate misreads or cloned registration plates, providing actionable intelligence.
 
-**Speaker Note:** Demonstrate fuzzy search live if time permits; it is one of the most compelling highlights of the platform.
-
 ---
 
 ## Slide 8: Security, Privacy & Accountability
@@ -182,8 +168,6 @@ Flagged transitions notify investigators of potential plate misreads or cloned r
 **Closed Government Systems (VAHAN, SARTHI, eGujCop)**
 
 Sentinel implements a contract-first adapter pattern. We defined request/response models, built mock adapters with realistic records, and documented exact activation steps when production credentials arrive (base URL, authentication, rate limits, audit hooks).
-
-**Speaker Note:** This contract-first strategy demonstrates production readiness without claiming false live integrations.
 
 ---
 
@@ -220,8 +204,6 @@ camera → DISTRICT EDGE → REGIONAL DC → STATE CORE
 
 Restricting WAN backhaul to metadata, alerts, and requested video clips reduces wide-area bandwidth demand by **2 to 3 orders of magnitude** (from 192 Gbps down to 8.7 Mbps).
 
-**Speaker Note:** 80,000 cameras distributed across ~400 district edge nodes equals 200 cameras per node, easily handled by standard edge hardware.
-
 ---
 
 ## Slide 10: Platform Capabilities & Transparent Evaluation
@@ -244,8 +226,6 @@ Restricting WAN backhaul to metadata, alerts, and requested video clips reduces 
 - **Live Sandbox Feed Yield**: 29 of 30 cameras are wide-area PTZ overviews where plates measure 5-15 px (below optical resolution thresholds). cam12 (toll plaza) yielded 25 detections of a real truck plate at 5 px/character. Recommendation: prioritize toll plazas and checkposts equipped with lane-facing optics.
 - **Geocoded Locations**: Camera coordinates are geocoded from site names, accurate to the facility rather than exact pole markers.
 - **Single-Node Deployment**: Prototype runs as a unified single-node deployment; scale-out topology is documented in HLD Section 9.
-
-**Speaker Note:** Transparent evaluation builds credibility with technical reviewers.
 
 ---
 
@@ -284,6 +264,7 @@ Restricting WAN backhaul to metadata, alerts, and requested video clips reduces 
 | Audit Trail API | `GET /api/v1/analytics/audit` |
 | Interactive OpenAPI Docs | `http://localhost:8000/api/docs` |
 
+**Team**: KodeMatrix  
 **Repository**: `https://github.com/DevamShah1211/Sentinel-Hackathone`  
 **Video Evidence**: Google Drive Folder & `DOCS/evidence/Sentinel Video/`  
 **Hosted Prototype**: `http://localhost:8000` (Backend) | `http://localhost:5173` (Frontend)
