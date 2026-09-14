@@ -7,6 +7,9 @@
 **Project**: Sentinel: Statewide CCTV Integration & ANPR Surveillance Engine  
 **Repository**: [DevamShah1211/Sentinel-Hackathone](https://github.com/DevamShah1211/Sentinel-Hackathone)
 
+**ASCII Diagram Legend:**
+`[ BLOCK ]` = system component or stage | `│` = vertical flow | `▼` = direction of data flow | `├──` = sub-item branch | `└──` = last sub-item in a branch | `─▶` = directed connection | `┌─┴─┐` = split / decision point
+
 ---
 
 ## 1. Executive Summary

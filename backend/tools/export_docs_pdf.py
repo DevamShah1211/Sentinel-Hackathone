@@ -72,7 +72,7 @@ blockquote {
 }
 hr { border: none; border-top: 1px solid #d6dee8; margin: 1em 0; }
 a { color: #1d4ed8; text-decoration: none; }
-img { max-width: 100%; }
+img { max-width: 100%; width: 100%; height: auto; max-height: 180mm; object-fit: contain; display: block; margin: 0.6em 0; page-break-inside: avoid; }
 ul, ol { margin: 0.4em 0; padding-left: 1.4em; }
 li { margin: 0.18em 0; }
 """
@@ -93,12 +93,30 @@ def to_html(md_path: Path, title: str, slide_breaks: bool) -> str:
         text,
         extensions=["tables", "fenced_code", "toc", "sane_lists", "attr_list"],
     )
+
+    # Inline images as base64 so they render in headless browser (file:// has no relative resolution)
+    import base64, mimetypes as _mt
+    def _inline_img(m: "re.Match[str]") -> str:
+        src = m.group(1)
+        # Try resolving relative to the markdown file's directory first, then ROOT
+        for base in (md_path.parent, ROOT):
+            candidate = (base / src).resolve()
+            if candidate.exists():
+                mime, _ = _mt.guess_type(str(candidate))
+                mime = mime or "image/png"
+                data = base64.b64encode(candidate.read_bytes()).decode()
+                return f'<img src="data:{mime};base64,{data}"'
+        return m.group(0)  # leave unchanged if not found
+
+    body = re.sub(r'<img src="([^"]+)"', _inline_img, body)
+
     css = CSS + (SLIDE_CSS if slide_breaks else "")
     return f"""<!doctype html>
 <html><head><meta charset="utf-8"><title>{title}</title>
 <style>{css}</style></head>
 <body>{body}
 </body></html>"""
+
 
 
 def render(html_path: Path, pdf_path: Path) -> None:

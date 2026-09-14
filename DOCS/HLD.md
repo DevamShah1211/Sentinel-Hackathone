@@ -14,6 +14,30 @@ Gujarat CCTV Integration Hackathon 2026 | Category 1 (Academic / Research / Star
 
 ---
 
+## Glossary
+
+| Term | Definition |
+|---|---|
+| ANPR | Automatic Number Plate Recognition: automated reading of vehicle registration plates from camera feeds |
+| RTSP | Real Time Streaming Protocol: standard for delivering live video streams from cameras and encoders |
+| HLS | HTTP Live Streaming: Apple's adaptive bitrate protocol used for browser-compatible video playback |
+| WebRTC / WHEP | Web Real-Time Communication / WebRTC HTTP Egress Protocol: low-latency browser video |
+| PTZ | Pan-Tilt-Zoom camera: a motorised camera that can be directed and zoomed remotely |
+| VMS | Video Management System: software for managing IP cameras and recorded footage |
+| NVR / DVR | Network / Digital Video Recorder: dedicated device for recording camera streams |
+| PostGIS | Spatial extension for PostgreSQL enabling geography columns, proximity queries and GeoJSON export |
+| pg_trgm | PostgreSQL trigram extension enabling fuzzy text similarity search using GIN indexes |
+| GIN index | Generalised Inverted Index: the PostgreSQL index type used by pg_trgm for fast fuzzy plate search |
+| JWT | JSON Web Token: signed bearer token used for stateless authentication of every API request |
+| VAHAN | Government of India vehicle registration database operated by MoRTH |
+| SARTHI | Government of India driving licence database operated by MoRTH |
+| eGujCop | Gujarat Police integrated operations and FIR management system |
+| NAFIS | National Automated Fingerprint Identification System operated by NCRB |
+| DPDP Act 2023 | Digital Personal Data Protection Act 2023: India's primary data privacy legislation |
+| ONVIF | Open Network Video Interface Forum: interoperability standard for IP cameras and NVRs |
+
+---
+
 ## 1. What We Built, and What We Did Not
 
 Sentinel is a working platform, not a mock-up. It onboards cameras from the sandbox catalogue, plots them on a GIS map, streams them in a unified viewer, continuously reads number plates from live feeds, matches them against a watchlist, raises alerts in real time, reconstructs a vehicle's route across cameras, and exports the output report.
@@ -513,7 +537,16 @@ This turns an impossible capital requirement into a policy decision the departme
 
 ### 9.5 Where Linearity Breaks
 
-Honest limits of the projection: network fan-in at regional aggregation points; metadata hot-partitioning when many cameras share a timestamp range; storage rebuild times at petabyte scale; and cross-region route queries, which are scatter-gather and degrade with shard count. Each needs load-testing before any statewide commitment, and a benchmark of 200 streams with a transparent projection is worth more than an unsupported claim of 80,000.
+Four honest limits of the scale-out projection:
+
+| Limit | Detail |
+|---|---|
+| Network fan-in | Regional aggregation points become hot if many districts flush at the same second |
+| Metadata hot-partitioning | Many cameras sharing a timestamp range compete on the same PostgreSQL partition page |
+| Storage rebuild time | Petabyte-scale object store rebuilds after node loss take hours, not minutes |
+| Cross-region route queries | Scatter-gather across regional shards: latency grows linearly with shard count |
+
+Each needs load-testing before any statewide commitment. A benchmark of 200 streams with a transparent projection is worth more than an unsupported claim of 80,000.
 
 ### 9.6 Load Balancing and Horizontal Scaling
 
@@ -609,6 +642,8 @@ Stating this plainly is what "integration readiness" means, and it survives ques
 **Credentials.** Sandbox credentials live in environment configuration, never in code, and are masked in every log line. `GET /cameras` does not serialise the RTSP or WHEP URLs at all, because those carry credentials for the inference worker; the browser receives only proxy URLs, and the worker reads the real ones from a separate service-to-service route. Live video reaches the operator through an authenticated proxy that holds the sandbox session server-side.
 
 **Residency.** All inference is local. No frame, crop or plate read leaves the deployment boundary.
+
+**Operator Interface Design Rationale.** Alert severity is communicated through colour (red = exact watchlist match, amber = fuzzy match, blue = informational) and is also stated in text, so the interface degrades gracefully under colour-blind conditions. The GIS map defaults to a neutral dark basemap to maximise contrast with camera-status pins. The video wall uses HLS adaptive bitrate, so a degraded connection reduces quality rather than dropping the stream. All operator-facing actions that query citizen data require a stated purpose field, surfaced in the UI at the point of action rather than as a post-hoc confirmation, because compliance that requires a separate step is compliance that gets skipped.
 
 ---
 
