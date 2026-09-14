@@ -1,22 +1,10 @@
 """
 Render the submission documents to PDF.
 
-    python tools/export_docs_pdf.py                    # HLD + PRESENTATION
+    python tools/export_docs_pdf.py                    # HLD + PRESENTATION + WORKFLOW-DIAGRAM
     python tools/export_docs_pdf.py --only HLD
 
-Five of the seven evaluation areas are judged on documents rather than running
-software, and the portal takes PDFs. The markdown is the source of truth; this
-converts it without anyone hand-formatting a Word file at 2 a.m. and introducing
-a discrepancy between what the document says and what the repository does.
-
-No pandoc and no LaTeX on this machine, so the path is markdown -> styled HTML
--> headless Chrome's own print-to-PDF. Chrome is already a dependency (Playwright
-drives it for the UI screenshots), its layout engine handles the wide tables
-these documents are full of, and it needs no TeX distribution.
-
-Printed light-on-white deliberately. The console is a dark product, but a
-document that reaches a reviewer as a PDF will be read on a screen and quite
-possibly printed, and dark backgrounds waste toner and read badly on paper.
+Converts markdown source documents to styled HTML and renders PDFs via headless Edge/Chrome.
 """
 from __future__ import annotations
 
@@ -39,54 +27,54 @@ TARGETS = {
     "WORKFLOW-DIAGRAM": (DOCS / "WORKFLOW_DIAGRAM.md", "Sentinel: Workflow & Integration Diagram"),
 }
 
-# Print stylesheet. Serif for body because these are read as documents, mono for
-# the code and the many measurement tables, and page breaks before each H2 in
-# the presentation so one slide does not straddle two pages.
 CSS = """
-@page { size: A4; margin: 18mm 16mm; }
-body {
+@page { size: A4; margin: 15mm 14mm; }
+html, body {
+  background: #ffffff;
   font-family: "Georgia", "Times New Roman", serif;
-  font-size: 10.5pt; line-height: 1.5; color: #14181f;
-  max-width: none;
+  font-size: 10pt; line-height: 1.45; color: #14181f;
+  margin: 0; padding: 0;
 }
 h1, h2, h3, h4 {
   font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
-  color: #0b1f3a; line-height: 1.25; margin: 1.1em 0 0.45em;
-  page-break-after: avoid; break-after: avoid;
-  page-break-inside: avoid; break-inside: avoid;
+  color: #0b1f3a; line-height: 1.2; margin: 0.9em 0 0.35em;
+  page-break-after: avoid !important;
+  break-after: avoid !important;
 }
-h1 { font-size: 20pt; border-bottom: 2px solid #0b1f3a; padding-bottom: 6px; }
-h2 { font-size: 14.5pt; border-bottom: 1px solid #c9d3e0; padding-bottom: 4px; }
-h3 { font-size: 12pt; }
-h4 { font-size: 10.5pt; letter-spacing: 0.02em; }
-p, li { margin: 0.55em 0; orphans: 3; widows: 3; }
+h1 { font-size: 18pt; border-bottom: 2px solid #0b1f3a; padding-bottom: 4px; margin-top: 0.2em; }
+h2 { font-size: 13.5pt; border-bottom: 1px solid #c9d3e0; padding-bottom: 3px; }
+h3 { font-size: 11.5pt; }
+h4 { font-size: 10pt; letter-spacing: 0.01em; }
+p, li { margin: 0.4em 0; orphans: 2; widows: 2; }
 code {
   font-family: "Consolas", "SF Mono", monospace;
-  font-size: 9pt; background: #eef2f7; padding: 1px 4px; border-radius: 3px;
+  font-size: 8.5pt; background: #eef2f7; padding: 1px 4px; border-radius: 3px;
 }
 pre {
   background: #f5f7fa; border: 1px solid #dbe3ed; border-left: 3px solid #2f6ee0;
-  border-radius: 4px; padding: 9px 11px; overflow-x: auto;
+  border-radius: 4px; padding: 6px 8px; margin: 0.5em 0;
+  overflow-x: auto; font-size: 7.5pt; line-height: 1.25;
+  page-break-inside: auto; break-inside: auto;
 }
-pre code { background: none; padding: 0; font-size: 8.5pt; line-height: 1.42; }
+pre code { background: none; padding: 0; font-size: 7.5pt; line-height: 1.25; }
 table {
-  border-collapse: collapse; width: 100%; margin: 0.8em 0;
-  font-size: 9pt;
+  border-collapse: collapse; width: 100%; margin: 0.6em 0;
+  font-size: 8.5pt; page-break-inside: auto; break-inside: auto;
 }
-tr { page-break-inside: avoid; break-inside: avoid; }
-th, td { border: 1px solid #cbd5e1; padding: 5px 8px; text-align: left; vertical-align: top; }
+tr { page-break-inside: avoid !important; break-inside: avoid !important; }
+th, td { border: 1px solid #cbd5e1; padding: 4px 7px; text-align: left; vertical-align: top; }
 th { background: #eef2f7; font-weight: 650; }
 tr:nth-child(even) td { background: #fafbfd; }
 blockquote {
-  margin: 0.7em 0; padding: 6px 14px;
-  border-left: 3px solid #94a3b8; background: #f7f9fc; color: #33415c;
+  margin: 0.5em 0; padding: 5px 12px;
+  border-left: 3px solid #2f6ee0; background: #f7f9fc; color: #1e293b;
   page-break-inside: avoid; break-inside: avoid;
 }
-hr { border: none; border-top: 1px solid #d6dee8; margin: 1.4em 0; }
+hr { border: none; border-top: 1px solid #d6dee8; margin: 1em 0; }
 a { color: #1d4ed8; text-decoration: none; }
 img { max-width: 100%; }
-ul, ol { margin: 0.5em 0; padding-left: 1.5em; }
-li { margin: 0.22em 0; }
+ul, ol { margin: 0.4em 0; padding-left: 1.4em; }
+li { margin: 0.18em 0; }
 """
 
 SLIDE_CSS = "h2 { page-break-before: always; }\nh1 + h2 { page-break-before: avoid; }"
@@ -94,6 +82,9 @@ SLIDE_CSS = "h2 { page-break-before: always; }\nh1 + h2 { page-break-before: avo
 
 def to_html(md_path: Path, title: str, slide_breaks: bool) -> str:
     text = md_path.read_text(encoding="utf-8")
+
+    # Clean any stray em-dashes
+    text = text.replace(" — ", " : ").replace("—", "-")
 
     text = re.sub(r"```mermaid.*?```", "_[diagram: see the repository]_",
                   text, flags=re.S)
@@ -124,10 +115,10 @@ def render(html_path: Path, pdf_path: Path) -> None:
     await page.pdf({{
       path: {str(pdf_path)!r}.replace(/^'|'$/g, ''),
       format: 'A4', printBackground: true,
-      margin: {{ top: '18mm', bottom: '18mm', left: '16mm', right: '16mm' }},
+      margin: {{ top: '15mm', bottom: '15mm', left: '14mm', right: '14mm' }},
       displayHeaderFooter: true,
       headerTemplate: '<div></div>',
-      footerTemplate: '<div style="width:100%;font-size:8pt;color:#94a3b8;padding:0 16mm;font-family:Segoe UI,Arial,sans-serif"><span style="float:right"><span class="pageNumber"></span> / <span class="totalPages"></span></span></div>',
+      footerTemplate: '<div style="width:100%;font-size:8pt;color:#94a3b8;padding:0 14mm;font-family:Segoe UI,Arial,sans-serif"><span style="float:right"><span class="pageNumber"></span> / <span class="totalPages"></span></span></div>',
     }})
     await browser.close()
     """
@@ -160,7 +151,6 @@ def render(html_path: Path, pdf_path: Path) -> None:
             return
 
     raise RuntimeError("Failed to render PDF using Node or Browser CLI")
-
 
 
 def main() -> int:
