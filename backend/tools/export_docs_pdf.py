@@ -116,13 +116,10 @@ Gujarat CCTV Integration Hackathon 2026</div>
 
 def render(html_path: Path, pdf_path: Path) -> None:
     """
-    Print the HTML with Chrome, driven from Node.
-
-    Playwright is installed as a Node package for the UI screenshots, not as a
-    Python one, and adding a second Playwright stack and its browser download to
-    render two documents is not worth the install. The Node driver already works
-    here, so this shells out to it.
+    Print the HTML with Chrome/Edge, trying Node/Playwright first, then falling back to browser CLI.
     """
+    frontend = ROOT / "frontend"
+    script = frontend / "_print_pdf.mjs"
     driver = f"""
     import {{ chromium }} from 'playwright-core'
     const browser = await chromium.launch({{ channel: 'chrome' }})
@@ -138,16 +135,36 @@ def render(html_path: Path, pdf_path: Path) -> None:
     }})
     await browser.close()
     """
-    frontend = ROOT / "frontend"
-    script = frontend / "_print_pdf.mjs"
     script.write_text(driver, encoding="utf-8")
     try:
         result = subprocess.run(["node", str(script)], cwd=str(frontend),
-                                capture_output=True, text=True, timeout=300)
-        if result.returncode != 0:
-            raise RuntimeError(result.stderr.strip()[:600])
+                                capture_output=True, text=True, timeout=120)
+        if result.returncode == 0:
+            return
+    except Exception:
+        pass
     finally:
         script.unlink(missing_ok=True)
+
+    # Fallback to direct Edge / Chrome CLI print-to-pdf
+    edge_exe = Path(r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe")
+    chrome_exe = Path(r"C:\Program Files\Google\Chrome\Application\chrome.exe")
+    exe = edge_exe if edge_exe.exists() else (chrome_exe if chrome_exe.exists() else None)
+    if exe and exe.exists():
+        cmd = [
+            str(exe),
+            "--headless",
+            "--disable-gpu",
+            "--no-pdf-header-footer",
+            f"--print-to-pdf={pdf_path}",
+            html_path.as_uri(),
+        ]
+        res = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+        if res.returncode == 0 and pdf_path.exists():
+            return
+
+    raise RuntimeError("Failed to render PDF using Node or Browser CLI")
+
 
 
 def main() -> int:
