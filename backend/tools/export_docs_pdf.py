@@ -78,19 +78,67 @@ li { margin: 0.18em 0; }
 """
 
 SLIDE_CSS = """
-h1 { font-size: 20pt; }
+@page {
+  size: A4 portrait;
+  margin: 12mm 14mm 10mm 14mm;
+}
+html, body {
+  font-size: 9.5pt;
+  line-height: 1.38;
+}
+h1 {
+  font-size: 19pt;
+  margin-top: 0;
+  padding-bottom: 2px;
+}
 h2 {
-  font-size: 14pt;
-  margin-top: 1.6em;
+  font-size: 13.5pt;
+  margin-top: 0;
   color: #0b1f3a;
   border-bottom: 2px solid #2f6ee0;
-  padding-bottom: 4px;
+  padding-bottom: 3px;
+  page-break-before: always !important;
+  break-before: page !important;
+}
+h3 {
+  font-size: 11pt;
+  margin: 0.4em 0 0.2em;
+  page-break-after: avoid !important;
+  break-after: avoid !important;
 }
 hr {
-  border: none;
-  border-top: 3px solid #2f6ee0;
-  margin: 1.8em 0 1.2em;
-  page-break-after: avoid;
+  display: none;
+}
+img {
+  max-width: 100%;
+  width: auto;
+  height: auto;
+  max-height: 94mm;
+  object-fit: contain;
+  display: block;
+  margin: 0.35em auto;
+  page-break-inside: avoid !important;
+  break-inside: avoid !important;
+}
+table {
+  page-break-inside: avoid !important;
+  break-inside: avoid !important;
+  margin: 0.35em 0;
+  font-size: 8pt;
+}
+blockquote {
+  margin: 0.35em 0;
+  padding: 4px 10px;
+  page-break-inside: avoid !important;
+  break-inside: avoid !important;
+  font-size: 8.5pt;
+}
+p, li {
+  margin: 0.25em 0;
+}
+ul, ol {
+  margin: 0.25em 0;
+  padding-left: 1.3em;
 }
 """
 

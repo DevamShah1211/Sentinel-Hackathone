@@ -15,7 +15,7 @@
 
 ---
 
-## Slide 2a: The Problem
+## Slide 2: Problem Statement & What Sentinel Delivers
 
 **The Operational Gap in Statewide Surveillance**
 
@@ -23,11 +23,7 @@
 - Investigators asking "where has this vehicle been?" have no unified system to query across jurisdictions.
 - Watchlist matching, where present, relies on manual human monitoring across isolated displays.
 
----
-
-## Slide 2b: What Sentinel Delivers
-
-**One platform. Every camera. Automatic.**
+**What Sentinel Delivers: One platform. Every camera. Automatic.**
 
 - **Central Onboarding** - any catalogue camera, location provenance recorded
 - **Unified Viewing** - live multi-camera wall, no per-department software
@@ -77,22 +73,18 @@ Pretrained open-source models (YOLOv9-t detector, cct-s-v2 OCR) executing on **l
 
 **Accuracy Achieved Through Domain-Specific Engineering**
 
-**1. Track-Level Voting**: Vehicles remain visible across 20-60 frames. Every read votes per character weighted by OCR confidence, right-aligned on the 4-digit serial. Tracks reach 20-35 reads and accumulate 1.000 confidence.
+- **Track-Level Voting**: Accumulates 20-35 reads per vehicle weighted by OCR confidence (reaches 1.000 confidence).
+- **Indian Plate Grammar**: Deterministic position rules (e.g. `GJO1AB1234` -> `GJ01AB1234`, 7/7 test suite pass rate).
+- **Overlay Rejection**: Filters out burnt-in timestamps, PTZ text overlays, and billboard signage before indexing.
 
-**2. Indian Plate Grammar**: Position rules make common OCR confusions deterministically correctable.
-
-> **Real Example**: OCR returned `GJO1AB1234`. Position 2 must be a digit - O becomes 0 unambiguously. **7/7** pass rate on correction test suites. The same logic corrects five other common OCR confusions.
-
-**3. Overlay Rejection**: Detector filters out burnt-in timestamps, PTZ text overlays, and billboard signage before indexing.
-
-**Real Plate Finding on Live Grid (cam12 Adalaj Toll Plaza):**
+### Real Plate Finding on Live Grid (cam12 Adalaj Toll Plaza)
 
 ![Real Plate Detection on cam12 - 25 detections of real truck plate, recovering 8 of 10 characters at 5.8 px/char](DOCS/evidence/cam12_optics_finding.png)
 
 > **Empirical Accuracy & Siting Findings:**
 > - **Legible Ground-Truth Feeds (>=15 px/char)**: **6/6 (100%)** complete plate registrations recovered and verified.
 > - **Live Toll Plaza (cam12, 5.8 px/char)**: **25 live detections** of a genuine truck plate, recovering 8/10 characters (`66Q2XT449`).
-> - **Optics vs Software**: Upscaling cannot recreate details the sensor never captured. Siting cameras at toll plazas, checkposts, and queue lines produces readable plates immediately. Full detail in HLD §6.5.
+> - **Optics vs Software**: Upscaling cannot restore detail the sensor never captured. Siting cameras at toll plazas and checkposts produces readable plates immediately. Full detail in HLD §6.5.
 
 ---
 
@@ -166,7 +158,7 @@ Contract-first adapter pattern: request/response models defined, mock adapters w
 
 > **Key Insight**: Our server sat at 4% CPU while the gateway took 73s to accept 8 connections. The bottleneck is centralized ingress - not compute. This is the 80,000-camera problem at a scale of eight.
 
-**Statewide Edge-First Architecture**
+### Statewide Edge-First Architecture
 
 ![Statewide Edge-First Architecture - District Edge to Regional DC to State Core](DOCS/edge_topology_slide9.jpg)
 
@@ -185,11 +177,10 @@ Restricting WAN backhaul to metadata, alerts, and requested clips reduces wide-a
 - Exact, partial, and fuzzy plate search
 - Automatic watchlist matching with real-time WebSocket alerts
 - Route reconstruction with speed calculation and impossible transition flagging
-- Output report generation in XLSX and PDF formats
-- Purpose-bound audit trail logging
-- 57 automated tests, 100% accuracy on legible ground-truth feeds
+- Output report generation in XLSX/PDF formats and purpose-bound audit trail logging
+- 57 automated tests passing, 100% accuracy on legible ground-truth feeds
 
-**Production Safety Architecture: The cam10 Finding**
+### Production Safety Architecture: The cam10 Finding
 
 ![cam10 Junagadh Finding - Well-formed, confident, and wrong. Solved with MIN_ALERTABLE_PX_PER_CHAR = 12](DOCS/evidence/cam10_confident_and_wrong.png)
 
