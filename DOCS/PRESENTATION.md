@@ -4,6 +4,7 @@
 - **Event**: Gujarat CCTV Integration Hackathon 2026
 - **Category**: Category 1 (Academic / Research / Startup)
 - **Team Name**: KodeMatrix
+- **Team Members**: Devam Shah
 - **Track Scope**: Model 1 (Central CCTV Registry & GIS Mapping) + Model 2 (Unified Viewing Platform & ANPR Alerting)
 
 > A production-grade platform running against the live Sentinel sandbox grid: 30 cameras onboarded and mapped, a continuous ANPR pipeline validated at 100% on legible footage, real-time watchlist alerting, and timestamped route reconstruction across cameras.
@@ -35,6 +36,8 @@
 - **Real-Time Alerts** - WebSocket dispatch, severity levels, instant
 - **Route Reconstruction** - interactive map timeline with speed estimation
 - **Complete Auditability** - purpose-bound audit on every search and export
+
+> **Alert severity color key:** Red = exact watchlist match | Amber = fuzzy match (score > 0.7) | Blue = informational. All severity levels are also labelled in text for colorblind-safe operation.
 
 ---
 
@@ -82,9 +85,9 @@ Pretrained open-source models (YOLOv9-t detector, cct-s-v2 OCR) executing on **l
 
 **3. Overlay Rejection**: Detector filters out burnt-in timestamps, PTZ text overlays, and billboard signage before indexing.
 
-**Ground-Truth Benchmark:** **6/6 plates recovered exactly, 0 false positives.**
+**Ground-Truth Benchmark vs Live Sandbox:**
 
-**Live Sandbox Feed Findings:** **cam12 (Adalaj Toll Naka)** is a toll plaza feed: the pipeline detected a real truck plate **25 times in 100 seconds**, recovering 8 of 10 characters at 5 px/character. Seven preprocessing variants confirmed that upscaling cannot restore detail missing from optics.
+![ANPR Accuracy: 6/6 Ground Truth vs 0/30 Live Sandbox - same pipeline, different cameras](DOCS/accuracy_visual_slide5.jpg)
 
 > **The constraint is optics, not software.** Full detail in HLD §6.5.
 

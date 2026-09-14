@@ -550,8 +550,6 @@ Each needs load-testing before any statewide commitment. A benchmark of 200 stre
 
 ### 9.6 Load Balancing and Horizontal Scaling
 
-Every tier scales out rather than up, because the unit of work is naturally divisible: a camera is independent of every other camera.
-
 | Tier | Unit of scale | How work is distributed |
 |---|---|---|
 | Edge inference | One district node per ~26 tiled streams (measured, §9.4) | Cameras are assigned to nodes by district; a node owns its cameras outright, so there is no cross-node coordination on the hot path |
@@ -564,8 +562,6 @@ Every tier scales out rather than up, because the unit of work is naturally divi
 **What does not scale horizontally, stated plainly.** A single PostgreSQL primary accepts all writes. At 80,000 cameras with continuous ANPR that is the first thing to break, and the answer is partitioning `detections` by district and month, which is a schema migration rather than a configuration change. We have not done it, because at 30 cameras it would be unjustified complexity, and §9.3 gives the camera count at which it stops being optional.
 
 ### 9.7 Monitoring, Logging and Health Checks
-
-The platform already reports on itself; what a statewide deployment adds is aggregation and alerting, not new instrumentation.
 
 **What exists and is demonstrable today.** `GET /api/v1/cameras/health-status` reports per-camera reachability, and it is the query behind the dashboard's System Status panel. The ANPR worker keeps per-camera counters (frames read, frames decodable, inference seconds, reconnects, tracks emitted, detections posted, post failures, reads rejected for low confidence, invalid format, or below-resolution) and logs them per stream. Every request carries a correlation id through the middleware, so one operator action can be traced across services. Every search, route reconstruction and export is written to the audit trail with actor, purpose and case reference.
 
