@@ -56,8 +56,8 @@ class ReportRow:
 @dataclass
 class ReportMeta:
     """Context printed at the top of the report so the numbers can be interpreted."""
-    title: str = "Sentinel — ANPR Output Report"
-    subtitle: str = "Gujarat CCTV Integration Hackathon 2026 · Model 1 + Model 2"
+    title: str = "Sentinel - ANPR Output Report"
+    subtitle: str = "Gujarat CCTV Integration Hackathon 2026 | Track: Model 1 + Model 2 | Team: KodeMatrix"
     source: str = "Sentinel sandbox grid (cctv.corp8.cloud)"
     generated_at: datetime | None = None
     total_detections: int = 0
@@ -107,12 +107,15 @@ def build_xlsx(rows: Sequence[ReportRow], meta: ReportMeta) -> bytes:
     # ── Summary sheet ────────────────────────────────────────────────────────
     summary = workbook.active
     summary.title = "Summary"
+    summary.views.sheetView[0].showGridLines = True
     summary["A1"] = meta.title
     summary["A1"].font = Font(size=16, bold=True, color=BRAND_DARK)
     summary["A2"] = meta.subtitle
-    summary["A2"].font = Font(size=11, color="555555")
+    summary["A2"].font = Font(size=11, italic=True, color="4A5568")
 
     facts = [
+        ("Team Name", "KodeMatrix"),
+        ("Repository", "https://github.com/DevamShah1211/Sentinel-Hackathone"),
         ("Generated (UTC)", meta.generated_at.strftime("%Y-%m-%d %H:%M:%S")),
         ("Data source", meta.source),
         ("Reporting window", meta.window),
@@ -128,12 +131,12 @@ def build_xlsx(rows: Sequence[ReportRow], meta: ReportMeta) -> bytes:
     row_cursor = 4 + len(facts) + 1
     summary.cell(row_cursor, 1, "Method and limitations").font = Font(bold=True, size=12)
     for offset, note in enumerate(meta.notes or DEFAULT_NOTES, start=row_cursor + 1):
-        cell = summary.cell(offset, 1, f"• {note}")
+        cell = summary.cell(offset, 1, f"- {note}")
         cell.alignment = Alignment(wrap_text=True, vertical="top")
         summary.merge_cells(start_row=offset, start_column=1, end_row=offset, end_column=6)
         summary.row_dimensions[offset].height = 30
     summary.column_dimensions["A"].width = 26
-    summary.column_dimensions["B"].width = 60
+    summary.column_dimensions["B"].width = 62
 
     # ── Detections sheet ─────────────────────────────────────────────────────
     sheet = workbook.create_sheet("Detections")
@@ -355,12 +358,13 @@ def build_gap_xlsx(report) -> bytes:
     # ── Summary ──────────────────────────────────────────────────────────────
     summary = workbook.active
     summary.title = "Summary"
-    summary["A1"] = "Sentinel — Coverage Gap Analysis"
+    summary["A1"] = "Sentinel - Coverage Gap Analysis"
     summary["A1"].font = Font(size=16, bold=True, color=BRAND_DARK)
-    summary["A2"] = "Gujarat CCTV Integration Hackathon 2026 · Model 1 deliverable"
+    summary["A2"] = "Gujarat CCTV Integration Hackathon 2026 | Model 1 Deliverable | Team: KodeMatrix"
     summary["A2"].font = Font(size=11, color="555555")
 
     facts = [
+        ("Team Name", "KodeMatrix"),
         ("Generated (UTC)", report.generated_at.strftime("%Y-%m-%d %H:%M:%S")),
         ("Cameras in registry", report.total_cameras),
         ("Cameras with resolved locations", report.located_cameras),
@@ -388,7 +392,7 @@ def build_gap_xlsx(report) -> bytes:
         "districts here reflect that sample, not the true Gujarat estate.",
     ]
     for offset, note in enumerate(notes, start=notes_row + 1):
-        cell = summary.cell(offset, 1, f"• {note}")
+        cell = summary.cell(offset, 1, f"- {note}")
         cell.alignment = Alignment(wrap_text=True, vertical="top")
         summary.merge_cells(start_row=offset, start_column=1, end_row=offset, end_column=6)
         summary.row_dimensions[offset].height = 30
