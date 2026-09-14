@@ -7,6 +7,7 @@ Gujarat CCTV Integration Hackathon 2026 | Category 1 (Academic / Research / Star
 |---|---|
 | Document | Technical Proposal / High-Level Design |
 | Team Name | KodeMatrix |
+| Team Members | Devam Shah, Krishit Shah, Moksheet Shah, Abhishek Shah, Yash Rathod |
 | Scope | Model 1: Central CCTV Registry & GIS Mapping (compulsory)<br>Model 2: Unified Viewing Platform with ANPR & Watchlist Alerting |
 | Prototype status | Running against the live Sentinel sandbox grid (30 cameras) |
 | Companion | *Statewide CCTV Integration Programme: Technical Solution Document v1.0* ("the Tech Doc") |

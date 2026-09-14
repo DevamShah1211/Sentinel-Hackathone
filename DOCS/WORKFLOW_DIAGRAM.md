@@ -3,6 +3,7 @@
 
 **Gujarat CCTV Integration Hackathon 2026** | **Category 1 (Academic / Research / Startup)**  
 **Team Name**: KodeMatrix  
+**Team Members**: Devam Shah, Krishit Shah, Moksheet Shah, Abhishek Shah, Yash Rathod  
 **Document**: Workflow & Integration Diagram Specification  
 **Project**: Sentinel: Statewide CCTV Integration & ANPR Surveillance Engine  
 **Repository**: [DevamShah1211/Sentinel-Hackathone](https://github.com/DevamShah1211/Sentinel-Hackathone)

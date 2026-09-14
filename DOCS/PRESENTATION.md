@@ -4,7 +4,7 @@
 - **Event**: Gujarat CCTV Integration Hackathon 2026
 - **Category**: Category 1 (Academic / Research / Startup)
 - **Team Name**: KodeMatrix
-- **Team Members**: Devam Shah
+- **Team Members**: Devam Shah, Krishit Shah, Moksheet Shah, Abhishek Shah, Yash Rathod
 - **Track Scope**: Model 1 (Central CCTV Registry & GIS Mapping) + Model 2 (Unified Viewing Platform & ANPR Alerting)
 
 > A production-grade platform running against the live Sentinel sandbox grid: 30 cameras onboarded and mapped, a continuous ANPR pipeline validated at 100% on legible footage, real-time watchlist alerting, and timestamped route reconstruction across cameras.
@@ -85,11 +85,14 @@ Pretrained open-source models (YOLOv9-t detector, cct-s-v2 OCR) executing on **l
 
 **3. Overlay Rejection**: Detector filters out burnt-in timestamps, PTZ text overlays, and billboard signage before indexing.
 
-**Ground-Truth Benchmark vs Live Sandbox:**
+**Real Plate Finding on Live Grid (cam12 Adalaj Toll Plaza):**
 
-![ANPR Accuracy: 6/6 Ground Truth vs 0/30 Live Sandbox - same pipeline, different cameras](DOCS/accuracy_visual_slide5.jpg)
+![Real Plate Detection on cam12 - 25 detections of real truck plate, recovering 8 of 10 characters at 5.8 px/char](DOCS/evidence/cam12_optics_finding.png)
 
-> **The constraint is optics, not software.** Full detail in HLD §6.5.
+> **Empirical Accuracy & Siting Findings:**
+> - **Legible Ground-Truth Feeds (>=15 px/char)**: **6/6 (100%)** complete plate registrations recovered and verified.
+> - **Live Toll Plaza (cam12, 5.8 px/char)**: **25 live detections** of a genuine truck plate, recovering 8/10 characters (`66Q2XT449`).
+> - **Optics vs Software**: Upscaling cannot recreate details the sensor never captured. Siting cameras at toll plazas, checkposts, and queue lines produces readable plates immediately. Full detail in HLD §6.5.
 
 ---
 
@@ -186,9 +189,11 @@ Restricting WAN backhaul to metadata, alerts, and requested clips reduces wide-a
 - Purpose-bound audit trail logging
 - 57 automated tests, 100% accuracy on legible ground-truth feeds
 
-**Transparent Limitations**
+**Production Safety Architecture: The cam10 Finding**
 
-Full transparent limitations - sandbox camera yield, geocoded location accuracy, single-node status - are documented in HLD Section 12.
+![cam10 Junagadh Finding - Well-formed, confident, and wrong. Solved with MIN_ALERTABLE_PX_PER_CHAR = 12](DOCS/evidence/cam10_confident_and_wrong.png)
+
+> **Operational Guardrail**: At 6.5 px/char on cam10 (Junagadh), OCR returned valid plate `GJ038988` (confidence 0.83) against true plate `GJ03HR4879`. Rather than ignoring this edge-case, Sentinel implemented `MIN_ALERTABLE_PX_PER_CHAR = 12`: low-resolution reads remain searchable for investigation, but are strictly prohibited from raising automated high-priority alerts. Full transparent limitations are in HLD Section 12.
 
 ---
 
